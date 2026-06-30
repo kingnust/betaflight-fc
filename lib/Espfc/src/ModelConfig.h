@@ -413,7 +413,11 @@ struct InputChannelConfig
 struct InputConfig
 {
   int8_t ppmMode = PPM_MODE_NORMAL;
+#ifdef ESPFC_TARGET_DRONE_PROTO
+  uint8_t serialRxProvider = SERIALRX_CRSF;
+#else
   uint8_t serialRxProvider = SERIALRX_SBUS;
+#endif
 
   int16_t minCheck = 1050;
   int16_t maxCheck = 1900;
@@ -598,14 +602,22 @@ struct AccelConfig
 struct BaroConfig
 {
   int8_t bus = BUS_AUTO;
+#ifdef ESPFC_TARGET_DRONE_PROTO
+  int8_t dev = BARO_DEFAULT;
+#else
   int8_t dev = BARO_NONE;
+#endif
   FilterConfig filter{FILTER_BIQUAD, 3};
 };
 
 struct MagConfig
 {
   int8_t bus = BUS_AUTO;
+#ifdef ESPFC_TARGET_DRONE_PROTO
+  int8_t dev = MAG_DEFAULT;
+#else
   int8_t dev = MAG_NONE;
+#endif
   int8_t align = ALIGN_DEFAULT;
   int16_t offset[3] = { 0, 0, 0 };
   int16_t scale[3] = { 1000, 1000, 1000 };
@@ -820,7 +832,12 @@ class ModelConfig
     DebugConfig debug;
 
     // not classified yet
-    int16_t i2cSpeed = 800;
+    int16_t i2cSpeed =
+#ifdef ESPFC_TARGET_DRONE_PROTO
+      400;
+#else
+      800;
+#endif
     int8_t loopSync = 8; // MPU 1000Hz
     int8_t mixerSync = 1;
     int32_t featureMask = ESPFC_FEATURE_MASK;

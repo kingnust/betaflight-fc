@@ -471,6 +471,42 @@ struct GpsState
   bool isHomeValid() const { return homeSet && fix && fixType >= 2; }
 };
 
+struct RangefinderState
+{
+  bool present = false;
+  uint16_t distanceMm = 0;
+  uint8_t status = 255;
+  uint16_t signal = 0;
+  uint16_t ambient = 0;
+  uint32_t lastUpdate = 0;
+};
+
+struct OpticalFlowState
+{
+  bool present = false;
+  int16_t deltaX = 0;
+  int16_t deltaY = 0;
+  uint32_t frameCount = 0;
+  uint32_t lastUpdate = 0;
+};
+
+struct ColorSensorState
+{
+  bool present = false;
+  uint16_t red = 0;
+  uint16_t green = 0;
+  uint16_t blue = 0;
+  uint16_t clear = 0;
+  uint32_t lastUpdate = 0;
+};
+
+struct AuxSensorState
+{
+  RangefinderState range;
+  OpticalFlowState flow;
+  ColorSensorState color;
+};
+
 // runtime data
 struct ModelState
 {
@@ -479,6 +515,7 @@ struct ModelState
   MagState mag;
   BaroState baro;
   GpsState gps;
+  AuxSensorState aux;
 
   InputState input;
   FailsafeState failsafe;

@@ -1,7 +1,9 @@
 #include "Device/Baro/BaroBMP085.hpp"
 #include "Device/Baro/BaroBMP280.hpp"
+#include "Device/Baro/BaroBMP388.hpp"
 #include "Device/Baro/BaroSPL06.hpp"
 #include "Device/BaroDevice.hpp"
+#include "Device/GyroBMI088.h"
 #include "Device/GyroBMI160.h"
 #include "Device/GyroDevice.h"
 #include "Device/GyroICM20602.h"
@@ -11,6 +13,7 @@
 #include "Device/GyroMPU6500.h"
 #include "Device/GyroMPU9250.h"
 #include "Device/Mag/MagAK8963.hpp"
+#include "Device/Mag/MagBMM150.hpp"
 #include "Device/Mag/MagHMC5883L.hpp"
 #include "Device/Mag/MagQMC5883L.hpp"
 #include "Device/Mag/MagQMC5883P.hpp"
@@ -41,15 +44,36 @@ static Espfc::Device::GyroMPU9250 mpu9250;
 static Espfc::Device::GyroLSM6DSO lsm6dso;
 static Espfc::Device::GyroICM20602 icm20602;
 static Espfc::Device::GyroICM42688 icm42688;
+static Espfc::Device::GyroBMI088 bmi088;
 static Espfc::Device::GyroBMI160 bmi160;
 static Espfc::Device::Mag::MagHMC5883L hmc5883l;
 static Espfc::Device::Mag::MagQMC5883L qmc5883l;
 static Espfc::Device::Mag::MagQMC5883P qmc5883p;
 static Espfc::Device::Mag::MagAK8963 ak8963;
+static Espfc::Device::Mag::MagBMM150 bmm150;
 static Espfc::Device::Baro::BaroBMP085 bmp085;
 static Espfc::Device::Baro::BaroBMP280 bmp280;
+static Espfc::Device::Baro::BaroBMP388 bmp388;
 static Espfc::Device::Baro::BaroSPL06 spl06;
 } // namespace
+
+namespace Espfc::Device {
+
+#if defined(ESPFC_SPI_0)
+BusSPI* getMainSpiBus()
+{
+  return &spiBus;
+}
+#endif
+
+#if defined(ESPFC_I2C_0)
+BusI2C* getMainI2cBus()
+{
+  return &i2cBus;
+}
+#endif
+
+} // namespace Espfc::Device
 
 namespace Espfc {
 
@@ -105,13 +129,20 @@ void Hardware::detectGyro()
   {
     Hal::Gpio::digitalWrite(_model.config.pin[PIN_SPI_CS0], HIGH);
     Hal::Gpio::pinMode(_model.config.pin[PIN_SPI_CS0], OUTPUT);
+    if (_model.config.pin[PIN_SPI_CS1] != -1)
+    {
+      Hal::Gpio::digitalWrite(_model.config.pin[PIN_SPI_CS1], HIGH);
+      Hal::Gpio::pinMode(_model.config.pin[PIN_SPI_CS1], OUTPUT);
+      bmi088.setGyroCs(_model.config.pin[PIN_SPI_CS1]);
+      if (!detectedGyro && detectDevice(bmi088, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &bmi088;
+    }
     if (!detectedGyro && detectDevice(mpu9250, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &mpu9250;
     if (!detectedGyro && detectDevice(mpu6500, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &mpu6500;
     if (!detectedGyro && detectDevice(icm20602, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm20602;
     if (!detectedGyro && detectDevice(icm42688, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm42688;
     if (!detectedGyro && detectDevice(bmi160, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &bmi160;
     if (!detectedGyro && detectDevice(lsm6dso, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &lsm6dso;
-    if (detectedGyro) gyroSlaveBus.begin(&spiBus, detectedGyro->getAddress());
+    if (detectedGyro && detectedGyro->getType() != GYRO_BMI088) gyroSlaveBus.begin(&spiBus, detectedGyro->getAddress());
   }
 #endif
 #if defined(ESPFC_I2C_0)
@@ -147,6 +178,7 @@ void Hardware::detectMag()
     if (!detectedMag && detectDevice(hmc5883l, i2cBus)) detectedMag = &hmc5883l;
     if (!detectedMag && detectDevice(qmc5883l, i2cBus)) detectedMag = &qmc5883l;
     if (!detectedMag && detectDevice(qmc5883p, i2cBus)) detectedMag = &qmc5883p;
+    if (!detectedMag && detectDevice(bmm150, i2cBus)) detectedMag = &bmm150;
   }
 #endif
   if (gyroSlaveBus.getBus())
@@ -166,7 +198,7 @@ void Hardware::detectBaro()
   if (_model.config.baro.dev == BARO_NONE) return;
 
   Device::BaroDevice* detectedBaro = nullptr;
-#if defined(ESPFC_SPI_0)
+#if defined(ESPFC_SPI_0) && !defined(ESPFC_TARGET_DRONE_PROTO)
   if (_model.config.pin[PIN_SPI_CS1] != -1)
   {
     Hal::Gpio::digitalWrite(_model.config.pin[PIN_SPI_CS1], HIGH);
@@ -180,6 +212,7 @@ void Hardware::detectBaro()
   if (_model.config.pin[PIN_I2C_0_SDA] != -1 && _model.config.pin[PIN_I2C_0_SCL] != -1)
   {
     if (!detectedBaro && detectDevice(bmp280, i2cBus)) detectedBaro = &bmp280;
+    if (!detectedBaro && detectDevice(bmp388, i2cBus)) detectedBaro = &bmp388;
     if (!detectedBaro && detectDevice(bmp085, i2cBus)) detectedBaro = &bmp085;
     if (!detectedBaro && detectDevice(spl06, i2cBus)) detectedBaro = &spl06;
   }

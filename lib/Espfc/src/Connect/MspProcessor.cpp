@@ -240,8 +240,8 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       //r.writeU16(_model.state.loopTimer.delta);
       r.writeU16(_model.state.stats.loopTime());
       r.writeU16(_model.state.i2cErrorCount); // i2c error count
-      //         acc,     baro,    mag,     gps,     sonar,   gyro
-      r.writeU16(_model.accelActive() | _model.baroActive() << 1 | _model.magActive() << 2 | _model.gpsActive() << 3 | 0 << 4 | _model.gyroActive() << 5);
+      //         acc,     baro,    mag,     gps,     sonar/range,              gyro
+      r.writeU16(_model.accelActive() | _model.baroActive() << 1 | _model.magActive() << 2 | _model.gpsActive() << 3 | _model.rangefinderActive() << 4 | _model.gyroActive() << 5);
       r.writeU32(_model.state.mode.mask); // flight mode flags
       r.writeU8(0); // pid profile
       r.writeU16(lrintf(_model.state.stats.getCpuLoad()));

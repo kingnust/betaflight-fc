@@ -13,6 +13,7 @@ enum BaroDeviceType
   BARO_MS5611 = 3,
   BARO_BMP280 = 4,
   BARO_SPL06 = 5,
+  BARO_BMP388 = 6,
   BARO_MAX
 };
 

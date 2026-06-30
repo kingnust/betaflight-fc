@@ -1269,7 +1269,52 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     {
       s.print(F(", GPS"));
     }
+    if(_model.rangefinderActive())
+    {
+      s.print(F(", VL53L1X/RANGE"));
+    }
+    if(_model.opticalFlowActive())
+    {
+      s.print(F(", PMW3901/FLOW"));
+    }
+    if(_model.colorSensorActive())
+    {
+      s.print(F(", TCS34725/COLOR"));
+    }
     s.println();
+
+    if(_model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive())
+    {
+      s.print(F("        aux:"));
+      if(_model.rangefinderActive())
+      {
+        s.print(F(" range="));
+        s.print(_model.state.aux.range.distanceMm);
+        s.print(F("mm status="));
+        s.print(_model.state.aux.range.status);
+      }
+      if(_model.opticalFlowActive())
+      {
+        s.print(F(" flow="));
+        s.print(_model.state.aux.flow.deltaX);
+        s.print('/');
+        s.print(_model.state.aux.flow.deltaY);
+        s.print(F(" frames="));
+        s.print(_model.state.aux.flow.frameCount);
+      }
+      if(_model.colorSensorActive())
+      {
+        s.print(F(" color="));
+        s.print(_model.state.aux.color.red);
+        s.print('/');
+        s.print(_model.state.aux.color.green);
+        s.print('/');
+        s.print(_model.state.aux.color.blue);
+        s.print('/');
+        s.print(_model.state.aux.color.clear);
+      }
+      s.println();
+    }
 
     s.print(F("       input: "));
     s.print(_model.state.input.frameRate);

@@ -17,6 +17,7 @@ enum GyroDeviceType {
   GYRO_ICM20602 = 7,
   GYRO_BMI160 = 8,
   GYRO_ICM42688 = 9,
+  GYRO_BMI088 = 10,
   GYRO_MAX
 };
 

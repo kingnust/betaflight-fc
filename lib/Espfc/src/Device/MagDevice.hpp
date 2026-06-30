@@ -14,6 +14,7 @@ enum MagDeviceType
   MAG_AK8963 = 4,
   MAG_QMC5883L = 5,
   MAG_QMC5883P = 6,
+  MAG_BMM150 = 7,
   MAG_MAX
 };
 

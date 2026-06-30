@@ -60,4 +60,15 @@ class Hardware
     Model& _model;
 };
 
+#if defined(ESPFC_SPI_0) || defined(ESPFC_I2C_0)
+namespace Device {
+#if defined(ESPFC_SPI_0)
+BusSPI* getMainSpiBus();
+#endif
+#if defined(ESPFC_I2C_0)
+BusI2C* getMainI2cBus();
+#endif
+}
+#endif
+
 }

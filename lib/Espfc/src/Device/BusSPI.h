@@ -28,6 +28,8 @@ class BusSPI: public BusDevice
 
     bool write(uint8_t devAddr, uint8_t regAddr, uint8_t length, const uint8_t* data) override;
 
+    ESPFC_SPI_0_DEV_T& getDevice();
+
   private:
     void transfer(uint8_t devAddr, uint8_t regAddr, uint8_t length, const uint8_t *in, uint8_t *out, uint32_t speed);
 

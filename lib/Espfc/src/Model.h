@@ -116,6 +116,21 @@ class Model
       return state.baro.present && config.baro.dev != BARO_NONE;
     }
 
+    bool rangefinderActive() const
+    {
+      return state.aux.range.present;
+    }
+
+    bool opticalFlowActive() const
+    {
+      return state.aux.flow.present;
+    }
+
+    bool colorSensorActive() const
+    {
+      return state.aux.color.present;
+    }
+
     bool calibrationActive() const
     {
       return state.accel.calibrationState != CALIBRATION_IDLE || state.gyro.calibrationState != CALIBRATION_IDLE || state.mag.calibrationState != CALIBRATION_IDLE;

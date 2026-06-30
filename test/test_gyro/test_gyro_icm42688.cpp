@@ -109,7 +109,8 @@ void test_get_rate()
 void test_enum_values()
 {
   static_assert(GYRO_ICM42688 == 9, "GYRO_ICM42688 must equal 9 (append-only rule)");
-  static_assert(GYRO_MAX == 10,     "GYRO_MAX must equal 10 after ICM42688 addition");
+  static_assert(GYRO_BMI088 == 10,  "GYRO_BMI088 must equal 10 (append-only rule)");
+  static_assert(GYRO_MAX == 11,     "GYRO_MAX must equal 11 after BMI088 addition");
   TEST_PASS();
 }
 

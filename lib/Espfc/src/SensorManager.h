@@ -8,6 +8,7 @@
 #include "Sensor/MagSensor.hpp"
 #include "Sensor/BaroSensor.hpp"
 #include "Sensor/VoltageSensor.h"
+#include "Sensor/AuxSensor.hpp"
 #include "Device/Input/InputButton.hpp"
 
 namespace Espfc {
@@ -34,6 +35,7 @@ class SensorManager
     Sensor::MagSensor _mag;
     Sensor::BaroSensor _baro;
     Sensor::VoltageSensor _voltage;
+    Sensor::AuxSensor _aux;
     Control::Fusion _fusion;
     Control::Altitude _altitude;
     bool _fusionUpdate;

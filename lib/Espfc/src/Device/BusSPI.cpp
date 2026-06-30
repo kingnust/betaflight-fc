@@ -10,6 +10,11 @@ namespace Espfc::Device {
 
 BusSPI::BusSPI(ESPFC_SPI_0_DEV_T& spi): _dev(spi) {}
 
+ESPFC_SPI_0_DEV_T& BusSPI::getDevice()
+{
+  return _dev;
+}
+
 BusType BusSPI::getType() const
 {
   return BUS_SPI;
