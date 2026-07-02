@@ -1,4 +1,5 @@
 #include "MagBMM150.hpp"
+#include "Debug_Espfc.h"
 #include <Arduino.h>
 
 #define BMM150_ADDRESS_1                 0x10
@@ -108,7 +109,10 @@ bool MagBMM150::testConnection()
   delay(3);
 
   uint8_t chipId = 0;
-  return _bus->read(_addr, BMM150_CHIP_ID_REG, 1, &chipId) == 1 && chipId == BMM150_CHIP_ID;
+  const bool readOk = _bus->read(_addr, BMM150_CHIP_ID_REG, 1, &chipId) == 1;
+  DRONE_PROTO_DEBUG_VALUE("bmm150 addr", _addr);
+  DRONE_PROTO_DEBUG_HEX("bmm150 chip_id", chipId);
+  return readOk && chipId == BMM150_CHIP_ID;
 }
 
 bool MagBMM150::writeReg(uint8_t reg, uint8_t value)
@@ -243,4 +247,3 @@ int16_t MagBMM150::compensateZ(int16_t rawZ, uint16_t rhall) const
 }
 
 } // namespace Espfc::Device::Mag
-

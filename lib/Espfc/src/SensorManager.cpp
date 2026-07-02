@@ -49,23 +49,24 @@ int FAST_CODE_ATTR SensorManager::read()
     _model.state.appQueue.send(Event(EVENT_GYRO_READ));
   }
 
+  int status = 0;
   if(_model.state.accel.timer.syncTo(_model.state.gyro.timer))
   {
     _accel.update();
     _model.state.appQueue.send(Event(EVENT_ACCEL_READ));
     _model.state.mode.button = _button.update();
-    return 1;
+    status = 1;
   }
 
-  if(_mag.update()) return 1;
+  if(_mag.update()) status = 1;
 
-  if(_baro.update()) return 1;
+  if(_baro.update()) status = 1;
 
-  if(_voltage.update()) return 1;
+  if(_voltage.update()) status = 1;
 
-  if(_aux.update()) return 1;
+  if(_aux.update()) status = 1;
 
-  return 0;
+  return status;
 }
 
 int FAST_CODE_ATTR SensorManager::preLoop()
@@ -104,12 +105,13 @@ int SensorManager::updateDelayed()
 {
   _gyro.postLoop();
 
-  // update at most one sensor besides gyro
   int status = 0;
+  int accelStatus = 0;
   if(_model.state.accel.timer.syncTo(_model.state.gyro.timer))
   {
     _accel.update();
     _model.state.mode.button = _button.update();
+    accelStatus = 1;
     status = 1;
   }
 
@@ -119,19 +121,17 @@ int SensorManager::updateDelayed()
     _fusionUpdate = false;
     fusion();
   }
-  _fusionUpdate = status;
+  _fusionUpdate = accelStatus;
 
-  if(status) return 1;
+  if(_mag.update()) status = 1;
 
-  if(_mag.update()) return 1;
+  if(_baro.update()) status = 1;
 
-  if(_baro.update()) return 1;
+  if(_voltage.update()) status = 1;
 
-  if(_voltage.update()) return 0;
+  if(_aux.update()) status = 1;
 
-  if(_aux.update()) return 0;
-
-  return 0;
+  return status;
 }
 
 }

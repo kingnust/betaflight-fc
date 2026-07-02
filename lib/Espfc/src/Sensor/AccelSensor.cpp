@@ -1,4 +1,5 @@
 #include "Sensor/AccelSensor.h"
+#include "Debug_Espfc.h"
 #include "Utils/FilterHelper.h"
 
 namespace Espfc::Sensor {
@@ -54,7 +55,12 @@ int FAST_CODE_ATTR AccelSensor::read()
   }
 
   Utils::Stats::Measure measure(_model.state.stats, COUNTER_ACCEL_READ);
-  _gyro->readAccel(_model.state.accel.raw);
+  const int status = _gyro->readAccel(_model.state.accel.raw);
+  if (!status)
+  {
+    DRONE_PROTO_DEBUG_LINE("accel read failed");
+    return 0;
+  }
 
   return 1;
 }

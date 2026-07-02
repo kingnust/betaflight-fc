@@ -173,7 +173,21 @@ void Espfc::forceDroneProtoBenchConfig()
 #else
   _model.config.accel.dev = GYRO_AUTO;
 #endif
+  for (int i = 0; i < 3; i++)
+  {
+    _model.config.accel.bias[i] = 0;
+  }
+  _model.config.accel.trim[0] = 0;
+  _model.config.accel.trim[1] = 0;
+  _model.state.accel.bias = VectorFloat();
+  _model.state.accel.calibrationState = CALIBRATION_IDLE;
+  _model.config.accel.filter = FilterConfig(FILTER_PT1, 30);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_BMP388)
+  _model.config.baro.bus = BUS_I2C;
+  _model.config.baro.dev = BARO_BMP388;
+#else
   _model.config.baro.dev = BARO_NONE;
+#endif
 #if defined(ESPFC_DRONE_PROTO_ENABLE_BMM150)
   _model.config.mag.bus = BUS_I2C;
   _model.config.mag.dev = MAG_BMM150;

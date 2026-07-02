@@ -1,4 +1,5 @@
 #include "BaroBMP388.hpp"
+#include "Debug_Espfc.h"
 #include <Arduino.h>
 
 #define BMP388_ADDRESS_FIRST       0x77
@@ -37,21 +38,58 @@ int BaroBMP388::begin(BusDevice* bus, uint8_t addr)
 {
   setBus(bus, addr);
 
+  DRONE_PROTO_DEBUG_VALUE("bmp388 begin addr", addr);
   if (_bus->isSPI()) return 0;
-  if (!testConnection()) return 0;
+  if (!testConnection())
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 first test failed");
+    return 0;
+  }
 
-  writeReg(BMP388_CMD_REG, BMP388_SOFT_RESET);
+  if (!writeReg(BMP388_CMD_REG, BMP388_SOFT_RESET))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 reset write failed");
+    return 0;
+  }
   delay(10);
 
-  if (!testConnection()) return 0;
-  if (!readCalibration()) return 0;
+  if (!testConnection())
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 second test failed");
+    return 0;
+  }
+  if (!readCalibration())
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 calibration read failed");
+    return 0;
+  }
 
-  if (!writeReg(BMP388_PWR_CTRL_REG, 0)) return 0;
+  if (!writeReg(BMP388_PWR_CTRL_REG, 0))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 standby failed");
+    return 0;
+  }
   delay(5);
-  if (!writeReg(BMP388_OSR_REG, BMP388_TEMP_OS_8X | BMP388_PRESS_OS_4X)) return 0;
-  if (!writeReg(BMP388_ODR_REG, BMP388_ODR_50HZ)) return 0;
-  if (!writeReg(BMP388_CONFIG_REG, BMP388_IIR_COEFF_3)) return 0;
-  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_NORMAL | BMP388_TEMP_EN | BMP388_PRESS_EN)) return 0;
+  if (!writeReg(BMP388_OSR_REG, BMP388_TEMP_OS_8X | BMP388_PRESS_OS_4X))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 osr failed");
+    return 0;
+  }
+  if (!writeReg(BMP388_ODR_REG, BMP388_ODR_50HZ))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 odr failed");
+    return 0;
+  }
+  if (!writeReg(BMP388_CONFIG_REG, BMP388_IIR_COEFF_3))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 config failed");
+    return 0;
+  }
+  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_NORMAL | BMP388_TEMP_EN | BMP388_PRESS_EN))
+  {
+    DRONE_PROTO_DEBUG_LINE("bmp388 normal mode failed");
+    return 0;
+  }
 
   delay(40);
   readMeasurement();
@@ -92,8 +130,10 @@ int BaroBMP388::getDelay(BaroDeviceMode mode) const
 bool BaroBMP388::testConnection()
 {
   uint8_t chipId = 0;
-  return _bus->read(_addr, BMP388_CHIP_ID_REG, 1, &chipId) == 1 &&
-         (chipId == BMP388_CHIP_ID || chipId == BMP390_CHIP_ID);
+  const bool readOk = _bus->read(_addr, BMP388_CHIP_ID_REG, 1, &chipId) == 1;
+  DRONE_PROTO_DEBUG_VALUE("bmp388 addr", _addr);
+  DRONE_PROTO_DEBUG_HEX("bmp388 chip_id", chipId);
+  return readOk && (chipId == BMP388_CHIP_ID || chipId == BMP390_CHIP_ID);
 }
 
 bool BaroBMP388::writeReg(uint8_t reg, uint8_t value)
@@ -185,4 +225,3 @@ double BaroBMP388::compensatePressure(uint32_t rawPressure) const
 }
 
 } // namespace Espfc::Device::Baro
-

@@ -120,7 +120,9 @@
 #define ESPFC_I2C_0_SCL 10
 #define ESPFC_I2C_0_SDA 9
 #endif
+#if !defined(ESPFC_TARGET_DRONE_PROTO)
 #define ESPFC_I2C_0_SOFT
+#endif
 
 #define ESPFC_BUZZER_PIN 5
 #define ESPFC_BUTTON_PIN -1

@@ -1283,6 +1283,38 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     }
     s.println();
 
+    s.print(F("     active: acc="));
+    s.print(_model.accelActive());
+    s.print(F(" mag="));
+    s.print(_model.magActive());
+    s.print(F(" baro="));
+    s.println(_model.baroActive());
+
+    s.print(F("    sensors: acc_raw="));
+    s.print(_model.state.accel.raw.x);
+    s.print('/');
+    s.print(_model.state.accel.raw.y);
+    s.print('/');
+    s.print(_model.state.accel.raw.z);
+    s.print(F(" acc="));
+    s.print(_model.state.accel.adc.x);
+    s.print('/');
+    s.print(_model.state.accel.adc.y);
+    s.print('/');
+    s.print(_model.state.accel.adc.z);
+    s.print(F(" mag="));
+    s.print(_model.state.mag.adc.x);
+    s.print('/');
+    s.print(_model.state.mag.adc.y);
+    s.print('/');
+    s.print(_model.state.mag.adc.z);
+    s.print(F(" baro="));
+    s.print(_model.state.baro.pressure);
+    s.print(F("Pa "));
+    s.print(_model.state.baro.temperature);
+    s.print(F("C alt="));
+    s.println(_model.state.baro.altitudeGround);
+
     if(_model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive())
     {
       s.print(F("        aux:"));

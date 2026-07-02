@@ -2,6 +2,7 @@
 
 #include "Debug_Espfc.h"
 #include "GyroDevice.h"
+#include "Hal/Gpio.h"
 #include "Utils/MemoryHelper.h"
 #include "helper_3dmath.h"
 #include <Arduino.h>
@@ -16,6 +17,7 @@
 #define BMI088_ACCEL_SOFT_RESET_REG    0x7E
 
 #define BMI088_ACCEL_RANGE_12G         0x02
+#define BMI088_ACCEL_RANGE_24G         0x03
 #define BMI088_ACCEL_ODR_1600_BW_280   0xAC
 #define BMI088_ACCEL_POWER_ENABLE      0x04
 #define BMI088_ACCEL_MODE_ACTIVE       0x00
@@ -71,6 +73,11 @@ public:
     DRONE_PROTO_DEBUG_LINE("bmi088 accel soft reset");
     if (!writeAccelByte(BMI088_ACCEL_SOFT_RESET_REG, BMI088_ACCEL_SOFT_RESET)) return 0;
     delay(50);
+    if (_bus->isSPI())
+    {
+      Hal::Gpio::digitalWrite(_addr, LOW);
+      Hal::Gpio::digitalWrite(_addr, HIGH);
+    }
     DRONE_PROTO_DEBUG_LINE("bmi088 gyro soft reset");
     if (!writeGyroByte(BMI088_GYRO_SOFT_RESET_REG, BMI088_GYRO_SOFT_RESET)) return 0;
     delay(50);
@@ -80,9 +87,9 @@ public:
     delay(5);
     DRONE_PROTO_DEBUG_LINE("bmi088 accel active mode");
     if (!writeAccelByte(BMI088_ACCEL_PWR_CONF_REG, BMI088_ACCEL_MODE_ACTIVE)) return 0;
-    delay(5);
+    delay(50);
     DRONE_PROTO_DEBUG_LINE("bmi088 accel range/odr");
-    if (!writeAccelByte(BMI088_ACCEL_RANGE_REG, BMI088_ACCEL_RANGE_12G)) return 0;
+    if (!writeAccelByte(BMI088_ACCEL_RANGE_REG, BMI088_ACCEL_RANGE_24G)) return 0;
     if (!writeAccelByte(BMI088_ACCEL_ODR_REG, BMI088_ACCEL_ODR_1600_BW_280)) return 0;
 
     DRONE_PROTO_DEBUG_LINE("bmi088 gyro range/odr");
@@ -123,11 +130,11 @@ public:
     int16_t y = (((int16_t)buffer[3]) << 8) | buffer[2];
     int16_t z = (((int16_t)buffer[5]) << 8) | buffer[4];
 
-    // ESP-FC's accel scale assumes +/-16G. BMI088 supports +/-12G or +/-24G,
-    // so report +/-12G samples in the existing internal +/-16G raw scale.
-    v.x = (int16_t)(((int32_t)x * 3) / 4);
-    v.y = (int16_t)(((int32_t)y * 3) / 4);
-    v.z = (int16_t)(((int32_t)z * 3) / 4);
+    // ESP-FC's accel scale assumes +/-16G. BMI088 is configured at +/-24G,
+    // so report samples in the existing internal +/-16G raw scale.
+    v.x = (int16_t)(((int32_t)x * 3) / 2);
+    v.y = (int16_t)(((int32_t)y * 3) / 2);
+    v.z = (int16_t)(((int32_t)z * 3) / 2);
     return 1;
   }
 

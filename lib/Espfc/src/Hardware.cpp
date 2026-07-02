@@ -246,6 +246,7 @@ void Hardware::detectMag()
 
 void Hardware::detectBaro()
 {
+  DRONE_PROTO_DEBUG_LINE("detectBaro start");
   if (_model.config.baro.dev == BARO_NONE) return;
 
   Device::BaroDevice* detectedBaro = nullptr;
@@ -262,10 +263,20 @@ void Hardware::detectBaro()
 #if defined(ESPFC_I2C_0)
   if (_model.config.pin[PIN_I2C_0_SDA] != -1 && _model.config.pin[PIN_I2C_0_SCL] != -1)
   {
-    if (!detectedBaro && detectDevice(bmp280, i2cBus)) detectedBaro = &bmp280;
-    if (!detectedBaro && detectDevice(bmp388, i2cBus)) detectedBaro = &bmp388;
-    if (!detectedBaro && detectDevice(bmp085, i2cBus)) detectedBaro = &bmp085;
-    if (!detectedBaro && detectDevice(spl06, i2cBus)) detectedBaro = &spl06;
+    DRONE_PROTO_DEBUG_VALUE("detectBaro sda", _model.config.pin[PIN_I2C_0_SDA]);
+    DRONE_PROTO_DEBUG_VALUE("detectBaro scl", _model.config.pin[PIN_I2C_0_SCL]);
+    if (_model.config.baro.dev == BARO_BMP388)
+    {
+      DRONE_PROTO_DEBUG_LINE("detectBaro before bmp388 detectDevice");
+      if (!detectedBaro && detectDevice(bmp388, i2cBus)) detectedBaro = &bmp388;
+    }
+    else
+    {
+      if (!detectedBaro && detectDevice(bmp280, i2cBus)) detectedBaro = &bmp280;
+      if (!detectedBaro && detectDevice(bmp388, i2cBus)) detectedBaro = &bmp388;
+      if (!detectedBaro && detectDevice(bmp085, i2cBus)) detectedBaro = &bmp085;
+      if (!detectedBaro && detectDevice(spl06, i2cBus)) detectedBaro = &spl06;
+    }
   }
 #endif
   if (gyroSlaveBus.getBus())
@@ -277,6 +288,7 @@ void Hardware::detectBaro()
 
   _model.state.baro.dev = detectedBaro;
   _model.state.baro.present = (bool)detectedBaro;
+  DRONE_PROTO_DEBUG_VALUE("detectBaro type", detectedBaro ? detectedBaro->getType() : BARO_NONE);
 }
 
 void Hardware::restart(const Model& model)
