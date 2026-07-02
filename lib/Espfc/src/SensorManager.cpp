@@ -15,7 +15,7 @@ int SensorManager::begin()
   DRONE_PROTO_DEBUG_LINE("sensor before gyro.begin");
   _gyro.begin();
   DRONE_PROTO_DEBUG_LINE("sensor after gyro.begin");
-#if defined(ESPFC_DRONE_PROTO_GYRO_ONLY)
+#if defined(ESPFC_DRONE_PROTO_GYRO_ONLY) && defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
   DRONE_PROTO_DEBUG_LINE("sensor gyro-only return");
   return 1;
 #endif

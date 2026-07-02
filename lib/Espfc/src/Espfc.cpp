@@ -175,7 +175,11 @@ void Espfc::forceDroneProtoBenchConfig()
 #endif
   _model.config.baro.dev = BARO_NONE;
   _model.config.mag.dev = MAG_NONE;
+#if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
   _model.config.fusion.mode = FUSION_NONE;
+#else
+  _model.config.fusion.mode = FUSION_COMPLEMENTARY;
+#endif
   _model.config.featureMask = FEATURE_RX_SERIAL;
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
