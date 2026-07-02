@@ -103,6 +103,7 @@ int EscDriverEsp32::begin(const EscConfig& conf)
 int EscDriverEsp32::attach(size_t channel, int pin, int pulse)
 {
   if (channel < 0 || channel >= ESC_CHANNEL_COUNT) return 0;
+  if (_protocol == ESC_PROTOCOL_DISABLED) return 0;
   initChannel(channel, (gpio_num_t)pin, pulse);
   return 1;
 }

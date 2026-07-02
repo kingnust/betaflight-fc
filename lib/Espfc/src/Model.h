@@ -439,6 +439,16 @@ class Model
         {
           config.gyro.dynamicFilter.count = DYN_NOTCH_COUNT_MAX;
         }
+
+        if(config.gyro.rpmFilter.harmonics > RPM_FILTER_HARMONICS_MAX)
+        {
+          config.gyro.rpmFilter.harmonics = RPM_FILTER_HARMONICS_MAX;
+        }
+
+        if(config.customMixerCount < 0 || config.customMixerCount > MIXER_RULE_MAX)
+        {
+          config.customMixerCount = 0;
+        }
     }
 
     void begin()

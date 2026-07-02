@@ -350,7 +350,7 @@ enum BuzzerEvent {
 struct BuzzerConfig
 {
   int8_t inverted = true;
-  int32_t beeperMask;
+  int32_t beeperMask = 0;
 };
 
 enum PidIndex {

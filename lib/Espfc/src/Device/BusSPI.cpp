@@ -58,6 +58,16 @@ void FAST_CODE_ATTR BusSPI::transfer(uint8_t devAddr, uint8_t regAddr, uint8_t l
 #if defined(ARCH_RP2040)
   _dev.transfer(regAddr);
   _dev.transfer(in, out, length);
+#elif defined(ESPFC_TARGET_DRONE_PROTO)
+  _dev.transfer(regAddr);
+  for (uint8_t i = 0; i < length; i++)
+  {
+    uint8_t value = _dev.transfer(in ? in[i] : 0x00);
+    if (out)
+    {
+      out[i] = value;
+    }
+  }
 #else
   _dev.transfer(regAddr);
   _dev.transferBytes(in, out, length);

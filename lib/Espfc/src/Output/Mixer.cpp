@@ -11,6 +11,7 @@ Mixer::Mixer(Model& model): _model(model), _motor(NULL), _servo(NULL) {}
 
 int Mixer::begin()
 {
+  const bool motorsEnabled = _model.config.output.protocol != ESC_PROTOCOL_DISABLED;
   EscConfig motorConf = {
     .timer = ESC_DRIVER_MOTOR_TIMER,
     .protocol = (EscProtocol)_model.config.output.protocol,
@@ -52,8 +53,11 @@ int Mixer::begin()
     }
     else
     {
-      _motor->attach(i, _model.config.pin[PIN_OUTPUT_0 + i], 1000);
-      _model.logger.info().log(F("MOTOR")).log(i).logln(_model.config.pin[PIN_OUTPUT_0 + i]);
+      if(motorsEnabled)
+      {
+        _motor->attach(i, _model.config.pin[PIN_OUTPUT_0 + i], 1000);
+        _model.logger.info().log(F("MOTOR")).log(i).logln(_model.config.pin[PIN_OUTPUT_0 + i]);
+      }
     }
     _model.state.output.telemetry.errors[i] = 0;
     _model.state.output.telemetry.errorsSum[i] = 0;
@@ -65,7 +69,10 @@ int Mixer::begin()
     _model.state.output.telemetry.rpm[i] = 0;
     _model.state.output.telemetry.freq[i] = 0;
   }
-  motorInitEscDevice(_motor);
+  if(motorsEnabled)
+  {
+    motorInitEscDevice(_motor);
+  }
 
   _model.state.mixer.minThrottle = _model.config.output.minThrottle;
   _model.state.mixer.maxThrottle = _model.config.output.maxThrottle;

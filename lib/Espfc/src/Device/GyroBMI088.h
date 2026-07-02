@@ -53,29 +53,49 @@ public:
 
   int begin(BusDevice* bus, uint8_t addr) override
   {
+    DRONE_PROTO_DEBUG_LINE("bmi088 begin start");
     setBus(bus, addr);
-    if (_gyroAddr == 0xFF) return 0;
+    if (_gyroAddr == 0xFF)
+    {
+      DRONE_PROTO_DEBUG_LINE("bmi088 missing gyro cs");
+      return 0;
+    }
 
-    if (!testConnection()) return 0;
+    DRONE_PROTO_DEBUG_LINE("bmi088 before initial testConnection");
+    if (!testConnection())
+    {
+      DRONE_PROTO_DEBUG_LINE("bmi088 initial testConnection failed");
+      return 0;
+    }
 
+    DRONE_PROTO_DEBUG_LINE("bmi088 accel soft reset");
     if (!writeAccelByte(BMI088_ACCEL_SOFT_RESET_REG, BMI088_ACCEL_SOFT_RESET)) return 0;
     delay(50);
+    DRONE_PROTO_DEBUG_LINE("bmi088 gyro soft reset");
     if (!writeGyroByte(BMI088_GYRO_SOFT_RESET_REG, BMI088_GYRO_SOFT_RESET)) return 0;
     delay(50);
 
+    DRONE_PROTO_DEBUG_LINE("bmi088 accel power enable");
     if (!writeAccelByte(BMI088_ACCEL_PWR_CTRL_REG, BMI088_ACCEL_POWER_ENABLE)) return 0;
     delay(5);
+    DRONE_PROTO_DEBUG_LINE("bmi088 accel active mode");
     if (!writeAccelByte(BMI088_ACCEL_PWR_CONF_REG, BMI088_ACCEL_MODE_ACTIVE)) return 0;
     delay(5);
+    DRONE_PROTO_DEBUG_LINE("bmi088 accel range/odr");
     if (!writeAccelByte(BMI088_ACCEL_RANGE_REG, BMI088_ACCEL_RANGE_12G)) return 0;
     if (!writeAccelByte(BMI088_ACCEL_ODR_REG, BMI088_ACCEL_ODR_1600_BW_280)) return 0;
 
+    DRONE_PROTO_DEBUG_LINE("bmi088 gyro range/odr");
     if (!writeGyroByte(BMI088_GYRO_RANGE_REG, BMI088_GYRO_RANGE_2000DPS)) return 0;
     if (!writeGyroByte(BMI088_GYRO_ODR_REG, BMI088_GYRO_ODR_2000_BW_230)) return 0;
+    DRONE_PROTO_DEBUG_LINE("bmi088 gyro int ctrl");
     writeGyroByte(BMI088_GYRO_INT_CTRL_REG, BMI088_GYRO_DRDY_ENABLE);
 
     delay(10);
-    return testConnection() ? 1 : 0;
+    DRONE_PROTO_DEBUG_LINE("bmi088 before final testConnection");
+    const bool ok = testConnection();
+    DRONE_PROTO_DEBUG_VALUE("bmi088 final ok", ok);
+    return ok ? 1 : 0;
   }
 
   GyroDeviceType getType() const override
@@ -118,7 +138,11 @@ public:
 
   int getRate() const override
   {
+#if defined(ESPFC_DRONE_PROTO_GYRO_RATE_500)
+    return 500;
+#else
     return 2000;
+#endif
   }
 
   void setRate(int rate) override
@@ -130,8 +154,12 @@ public:
   {
     uint8_t accelWhoAmI = 0;
     uint8_t gyroWhoAmI = 0;
-    return readAccelBytes(BMI088_ACCEL_CHIP_ID_REG, 1, &accelWhoAmI) &&
-           readGyroBytes(BMI088_GYRO_CHIP_ID_REG, 1, &gyroWhoAmI) &&
+    const bool accelRead = readAccelBytes(BMI088_ACCEL_CHIP_ID_REG, 1, &accelWhoAmI);
+    const bool gyroRead = readGyroBytes(BMI088_GYRO_CHIP_ID_REG, 1, &gyroWhoAmI);
+    DRONE_PROTO_DEBUG_HEX("bmi088 accel_id", accelWhoAmI);
+    DRONE_PROTO_DEBUG_HEX("bmi088 gyro_id", gyroWhoAmI);
+    return accelRead &&
+           gyroRead &&
            accelWhoAmI == BMI088_ACCEL_CHIP_ID &&
            gyroWhoAmI == BMI088_GYRO_CHIP_ID;
   }

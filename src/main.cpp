@@ -1,4 +1,114 @@
 #include <Arduino.h>
+
+#if defined(ESPFC_DRONE_PROTO_BMI088_PROBE)
+
+#include <SPI.h>
+
+static constexpr uint8_t BMI088_ACCEL_CS = 7;
+static constexpr uint8_t BMI088_GYRO_CS = 8;
+static constexpr int8_t BMI088_SPI_SCK = 9;
+static constexpr int8_t BMI088_SPI_MISO = 10;
+static constexpr int8_t BMI088_SPI_MOSI = 11;
+
+static uint8_t bmi088ReadReg(uint8_t cs, uint8_t reg, bool accel)
+{
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(cs, LOW);
+  SPI.transfer(reg | 0x80);
+  if (accel)
+  {
+    SPI.transfer(0x00);
+  }
+  uint8_t value = SPI.transfer(0x00);
+  digitalWrite(cs, HIGH);
+  SPI.endTransaction();
+  return value;
+}
+
+static void bmi088ReadBytes(uint8_t cs, uint8_t reg, bool accel, uint8_t *data, size_t len)
+{
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(cs, LOW);
+  SPI.transfer(reg | 0x80);
+  if (accel)
+  {
+    SPI.transfer(0x00);
+  }
+  for (size_t i = 0; i < len; i++)
+  {
+    data[i] = SPI.transfer(0x00);
+  }
+  digitalWrite(cs, HIGH);
+  SPI.endTransaction();
+}
+
+static void printBmi088Status()
+{
+  const uint8_t accelId = bmi088ReadReg(BMI088_ACCEL_CS, 0x00, true);
+  const uint8_t gyroId = bmi088ReadReg(BMI088_GYRO_CS, 0x00, false);
+  uint8_t gyroData[6] = {};
+  uint8_t accelData[6] = {};
+  bmi088ReadBytes(BMI088_GYRO_CS, 0x02, false, gyroData, sizeof(gyroData));
+  bmi088ReadBytes(BMI088_ACCEL_CS, 0x12, true, accelData, sizeof(accelData));
+
+  Serial.print("BMI088 accel_id=0x");
+  Serial.print(accelId, HEX);
+  Serial.print(" gyro_id=0x");
+  Serial.print(gyroId, HEX);
+  Serial.print(" gyro_raw=");
+  Serial.print((int16_t)((gyroData[1] << 8) | gyroData[0]));
+  Serial.print(",");
+  Serial.print((int16_t)((gyroData[3] << 8) | gyroData[2]));
+  Serial.print(",");
+  Serial.print((int16_t)((gyroData[5] << 8) | gyroData[4]));
+  Serial.print(" accel_raw=");
+  Serial.print((int16_t)((accelData[1] << 8) | accelData[0]));
+  Serial.print(",");
+  Serial.print((int16_t)((accelData[3] << 8) | accelData[2]));
+  Serial.print(",");
+  Serial.println((int16_t)((accelData[5] << 8) | accelData[4]));
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  const uint32_t serialStart = millis();
+  while (!Serial && millis() - serialStart < 3000)
+  {
+    delay(10);
+  }
+  Serial.println();
+  Serial.println("Drone Prototype BMI088 raw SPI probe booted");
+  Serial.flush();
+  delay(100);
+
+  Serial.println("Configuring BMI088 CS pins");
+  pinMode(BMI088_ACCEL_CS, OUTPUT);
+  pinMode(BMI088_GYRO_CS, OUTPUT);
+  digitalWrite(BMI088_ACCEL_CS, HIGH);
+  digitalWrite(BMI088_GYRO_CS, HIGH);
+  Serial.flush();
+
+  Serial.println("Starting SPI on SCK=9 MISO=10 MOSI=11");
+  Serial.flush();
+  SPI.begin(BMI088_SPI_SCK, BMI088_SPI_MISO, BMI088_SPI_MOSI);
+  delay(100);
+
+  Serial.println("Expected accel_id=0x1E gyro_id=0x0F");
+  Serial.flush();
+}
+
+void loop()
+{
+  Serial.print("probe heartbeat ");
+  Serial.println(millis());
+  Serial.flush();
+  printBmi088Status();
+  delay(500);
+}
+
+#else
+
 #include <Wire.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -146,6 +256,11 @@ Espfc::Espfc espfc;
   {
     espfc.update();
     espfc.updateOther();
+#if defined(ESPFC_DRONE_PROTO_WATCHDOG_SAFE)
+    delay(1);
+#endif
   }
+
+#endif
 
 #endif

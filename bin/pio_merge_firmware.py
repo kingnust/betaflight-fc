@@ -35,7 +35,7 @@ def merge_bin(source, target, env):
     shutil.copy2(merged_bin, timestamped_bin)
     print(f"Timestamped firmware: {timestamped_bin}")
 
-    archive_dir = os.path.join(env.subst("$PROJECT_DIR"), "firmware_builds", env.subst("$PIOENV"))
+    archive_dir = os.path.join(env.subst("$PROJECT_DIR"), "firmware_builds")
     os.makedirs(archive_dir, exist_ok=True)
     archived_bin = os.path.join(archive_dir, f"{env.subst('${PROGNAME}')}_0x00_{timestamp}.bin")
     shutil.copy2(merged_bin, archived_bin)

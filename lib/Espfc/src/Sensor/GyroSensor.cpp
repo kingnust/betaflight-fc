@@ -1,5 +1,6 @@
 
 #include "GyroSensor.h"
+#include "Debug_Espfc.h"
 #include "Utils/FilterHelper.h"
 #include "Utils/Sma.ipp"
 #ifdef ESPFC_DSP
@@ -22,17 +23,21 @@ GyroSensor::~GyroSensor()
 
 int GyroSensor::begin()
 {
+  DRONE_PROTO_DEBUG_LINE("gyroSensor.begin start");
   _gyro = _model.state.gyro.dev;
   if (!_gyro) return 0;
 
+  DRONE_PROTO_DEBUG_LINE("gyroSensor before set dlpf/rate");
   _gyro->setDLPFMode(_model.config.gyro.dlpf);
   _gyro->setRate(_gyro->getRate());
   _model.state.gyro.scale = Utils::toRad(2000.f) / 32768.f;
 
+  DRONE_PROTO_DEBUG_LINE("gyroSensor before calibration setup");
   _model.state.gyro.calibrationState = CALIBRATION_START; // calibrate gyro on start
   _model.state.gyro.calibrationRate = _model.state.loopTimer.rate;
   _model.state.gyro.biasAlpha = 5.0f / _model.state.gyro.calibrationRate;
 
+  DRONE_PROTO_DEBUG_LINE("gyroSensor before filter setup");
   _sma.begin(_model.config.loopSync);
   _dyn_notch_denom = std::max((uint32_t)1, _model.state.loopTimer.rate / 1000);
   _dyn_notch_sma.begin(_dyn_notch_denom);
@@ -51,17 +56,27 @@ int GyroSensor::begin()
   {
     _rpm_weights[i] = Utils::clamp(0.01f * _model.config.gyro.rpmFilter.weights[i], 0.0f, 1.0f);
   }
-  for (size_t i = 0; i < AXIS_COUNT_RPY; i++)
+  if (_dyn_notch_enabled || _dyn_notch_debug)
   {
+    DRONE_PROTO_DEBUG_LINE("gyroSensor before dyn analyzer setup");
+    for (size_t i = 0; i < AXIS_COUNT_RPY; i++)
+    {
 #ifdef ESPFC_DSP
-    _fft[i].begin(_model.state.loopTimer.rate / _dyn_notch_denom, _model.config.gyro.dynamicFilter, i);
+      _fft[i].begin(_model.state.loopTimer.rate / _dyn_notch_denom, _model.config.gyro.dynamicFilter, i);
 #else
-    _freqAnalyzer[i].begin(_model.state.loopTimer.rate / _dyn_notch_denom, _model.config.gyro.dynamicFilter);
+      _freqAnalyzer[i].begin(_model.state.loopTimer.rate / _dyn_notch_denom, _model.config.gyro.dynamicFilter);
 #endif
+    }
+  }
+  else
+  {
+    DRONE_PROTO_DEBUG_LINE("gyroSensor dyn analyzer skipped");
   }
 
+  DRONE_PROTO_DEBUG_LINE("gyroSensor before logger");
   _model.logger.info().log(F("GYRO INIT")).log(FPSTR(Device::GyroDevice::getName(_gyro->getType()))).log(_gyro->getAddress()).log(_model.config.gyro.dlpf).log(_gyro->getRate()).log(_model.state.gyro.timer.rate).logln(_model.state.gyro.timer.interval);
 
+  DRONE_PROTO_DEBUG_LINE("gyroSensor.begin done");
   return 1;
 }
 

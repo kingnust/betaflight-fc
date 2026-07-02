@@ -81,16 +81,25 @@ Hardware::Hardware(Model& model): _model(model) {}
 
 int Hardware::begin()
 {
+  DRONE_PROTO_DEBUG_LINE("hardware.begin start");
 #if defined(ESPFC_DRONE_PROTO_SAFE_BOOT)
   _model.state.gyro.present = false;
   _model.state.accel.present = false;
   _model.state.mag.present = false;
   _model.state.baro.present = false;
   _model.logger.info().logln(F("DRONE PROTO SAFE BOOT"));
+  DRONE_PROTO_DEBUG_LINE("hardware safe boot return");
   return 1;
 #endif
+  DRONE_PROTO_DEBUG_LINE("hardware before initBus");
   initBus();
+  DRONE_PROTO_DEBUG_LINE("hardware before detectGyro");
   detectGyro();
+  DRONE_PROTO_DEBUG_VALUE("hardware gyro_present", _model.state.gyro.present);
+#if defined(ESPFC_DRONE_PROTO_GYRO_ONLY)
+  DRONE_PROTO_DEBUG_LINE("hardware gyro-only return");
+  return 1;
+#endif
   detectMag();
   detectBaro();
   return 1;
@@ -105,6 +114,7 @@ void Hardware::onI2CError()
 void Hardware::initBus()
 {
 #if defined(ESPFC_SPI_0)
+  DRONE_PROTO_DEBUG_LINE("initBus SPI begin");
   int spiResult = spiBus.begin(_model.config.pin[PIN_SPI_0_SCK], _model.config.pin[PIN_SPI_0_MOSI],
                                _model.config.pin[PIN_SPI_0_MISO]);
   _model.logger.info()
@@ -113,8 +123,9 @@ void Hardware::initBus()
       .log(_model.config.pin[PIN_SPI_0_MOSI])
       .log(_model.config.pin[PIN_SPI_0_MISO])
       .logln(spiResult);
+  DRONE_PROTO_DEBUG_VALUE("initBus spiResult", spiResult);
 #endif
-#if defined(ESPFC_I2C_0)
+#if defined(ESPFC_I2C_0) && !defined(ESPFC_DRONE_PROTO_SKIP_I2C)
   int i2cResult =
       i2cBus.begin(_model.config.pin[PIN_I2C_0_SDA], _model.config.pin[PIN_I2C_0_SCL], _model.config.i2cSpeed * 1000ul);
   i2cBus.onError = std::bind(&Hardware::onI2CError, this);
@@ -129,12 +140,15 @@ void Hardware::initBus()
 
 void Hardware::detectGyro()
 {
+  DRONE_PROTO_DEBUG_LINE("detectGyro start");
   if (_model.config.gyro.dev == GYRO_NONE) return;
 
   Device::GyroDevice* detectedGyro = nullptr;
 #if defined(ESPFC_SPI_0)
   if (_model.config.pin[PIN_SPI_CS0] != -1)
   {
+    DRONE_PROTO_DEBUG_VALUE("detectGyro accel_cs", _model.config.pin[PIN_SPI_CS0]);
+    DRONE_PROTO_DEBUG_VALUE("detectGyro gyro_cs", _model.config.pin[PIN_SPI_CS1]);
     Hal::Gpio::digitalWrite(_model.config.pin[PIN_SPI_CS0], HIGH);
     Hal::Gpio::pinMode(_model.config.pin[PIN_SPI_CS0], OUTPUT);
     if (_model.config.pin[PIN_SPI_CS1] != -1)
@@ -142,17 +156,22 @@ void Hardware::detectGyro()
       Hal::Gpio::digitalWrite(_model.config.pin[PIN_SPI_CS1], HIGH);
       Hal::Gpio::pinMode(_model.config.pin[PIN_SPI_CS1], OUTPUT);
       bmi088.setGyroCs(_model.config.pin[PIN_SPI_CS1]);
+      DRONE_PROTO_DEBUG_LINE("detectGyro before bmi088 detectDevice");
       if (!detectedGyro && detectDevice(bmi088, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &bmi088;
+      DRONE_PROTO_DEBUG_VALUE("detectGyro bmi088_detected", detectedGyro == &bmi088);
     }
+#if !defined(ESPFC_DRONE_PROTO_BMI088_ONLY)
     if (!detectedGyro && detectDevice(mpu9250, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &mpu9250;
     if (!detectedGyro && detectDevice(mpu6500, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &mpu6500;
     if (!detectedGyro && detectDevice(icm20602, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm20602;
     if (!detectedGyro && detectDevice(icm42688, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm42688;
     if (!detectedGyro && detectDevice(bmi160, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &bmi160;
     if (!detectedGyro && detectDevice(lsm6dso, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &lsm6dso;
+#endif
     if (detectedGyro && detectedGyro->getType() != GYRO_BMI088) gyroSlaveBus.begin(&spiBus, detectedGyro->getAddress());
   }
 #endif
+#if !defined(ESPFC_DRONE_PROTO_BMI088_ONLY)
 #if defined(ESPFC_I2C_0)
   if (!detectedGyro && _model.config.pin[PIN_I2C_0_SDA] != -1 && _model.config.pin[PIN_I2C_0_SCL] != -1)
   {
@@ -165,13 +184,24 @@ void Hardware::detectGyro()
     if (detectedGyro) gyroSlaveBus.begin(&i2cBus, detectedGyro->getAddress());
   }
 #endif
-  if (!detectedGyro) return;
+#endif
+  if (!detectedGyro)
+  {
+    DRONE_PROTO_DEBUG_LINE("detectGyro none");
+    return;
+  }
 
+  DRONE_PROTO_DEBUG_VALUE("detectGyro type", detectedGyro->getType());
   detectedGyro->setDLPFMode(_model.config.gyro.dlpf);
   _model.state.gyro.dev = detectedGyro;
   _model.state.gyro.present = (bool)detectedGyro;
+#if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
+  _model.state.accel.present = false;
+#else
   _model.state.accel.present = _model.state.gyro.present && _model.config.accel.dev != GYRO_NONE;
+#endif
   _model.state.gyro.clock = detectedGyro->getRate();
+  DRONE_PROTO_DEBUG_VALUE("detectGyro clock", _model.state.gyro.clock);
 }
 
 void Hardware::detectMag()

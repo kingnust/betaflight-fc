@@ -19,22 +19,35 @@ int Espfc::load()
 
 int Espfc::begin()
 {
+  DRONE_PROTO_DEBUG_LINE("espfc.begin start");
   _model.state.led.begin(_model.config.pin[PIN_LED_BLINK], _model.config.led.type, _model.config.led.invert);
 
+  DRONE_PROTO_DEBUG_LINE("before serial.begin");
   _serial.begin();      // requires _model.load()
+  DRONE_PROTO_DEBUG_LINE("after serial.begin, before hardware.begin");
   //_model.logStorageResult();
   _hardware.begin();    // requires _model.load()
+  DRONE_PROTO_DEBUG_LINE("after hardware.begin, before model.begin");
   _model.begin();       // requires _hardware.begin()
+  DRONE_PROTO_DEBUG_LINE("after model.begin, before mixer.begin");
   _mixer.begin();
+  DRONE_PROTO_DEBUG_LINE("after mixer.begin, before sensor.begin");
   _sensor.begin();      // requires _hardware.begin()
+  DRONE_PROTO_DEBUG_LINE("after sensor.begin, before input.begin");
   _input.begin();       // requires _serial.begin()
+  DRONE_PROTO_DEBUG_LINE("after input.begin, before actuator.begin");
   _actuator.begin();    // requires _model.begin()
+  DRONE_PROTO_DEBUG_LINE("after actuator.begin, before controller.begin");
   _controller.begin();
+  DRONE_PROTO_DEBUG_LINE("after controller.begin, before blackbox.begin");
   _blackbox.begin();    // requires _serial.begin(), _actuator.begin()
+  DRONE_PROTO_DEBUG_LINE("after blackbox.begin, before buzzer.begin");
   _buzzer.begin();
+  DRONE_PROTO_DEBUG_LINE("after buzzer.begin");
 
   _model.state.buzzer.push(BUZZER_SYSTEM_INIT);
 
+  DRONE_PROTO_DEBUG_LINE("espfc.begin done");
   return 1;
 }
 
@@ -92,6 +105,102 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   _model.state.stats.update();
 
   return 1;
+}
+
+int Espfc::updateSerialOnly()
+{
+  _serial.update();
+  _buzzer.update();
+  _model.state.led.update();
+  _model.state.stats.update();
+  return 1;
+}
+
+void Espfc::forceDroneProtoBenchConfig()
+{
+#if defined(ESPFC_TARGET_DRONE_PROTO)
+#ifdef ESPFC_INPUT
+  _model.config.pin[PIN_INPUT_RX] = ESPFC_INPUT_PIN;
+#endif
+  _model.config.pin[PIN_OUTPUT_0] = ESPFC_OUTPUT_0;
+  _model.config.pin[PIN_OUTPUT_1] = ESPFC_OUTPUT_1;
+  _model.config.pin[PIN_OUTPUT_2] = ESPFC_OUTPUT_2;
+  _model.config.pin[PIN_OUTPUT_3] = ESPFC_OUTPUT_3;
+  _model.config.pin[PIN_BUTTON] = ESPFC_BUTTON_PIN;
+  _model.config.pin[PIN_BUZZER] = ESPFC_BUZZER_PIN;
+  _model.config.pin[PIN_LED_BLINK] = ESPFC_LED_PIN;
+#ifdef ESPFC_SERIAL_0
+  _model.config.pin[PIN_SERIAL_0_TX] = ESPFC_SERIAL_0_TX;
+  _model.config.pin[PIN_SERIAL_0_RX] = ESPFC_SERIAL_0_RX;
+#endif
+#ifdef ESPFC_SERIAL_1
+  _model.config.pin[PIN_SERIAL_1_TX] = ESPFC_SERIAL_1_TX;
+  _model.config.pin[PIN_SERIAL_1_RX] = ESPFC_SERIAL_1_RX;
+#endif
+#ifdef ESPFC_SERIAL_2
+  _model.config.pin[PIN_SERIAL_2_TX] = ESPFC_SERIAL_2_TX;
+  _model.config.pin[PIN_SERIAL_2_RX] = ESPFC_SERIAL_2_RX;
+#endif
+#ifdef ESPFC_I2C_0
+  _model.config.pin[PIN_I2C_0_SCL] = ESPFC_I2C_0_SCL;
+  _model.config.pin[PIN_I2C_0_SDA] = ESPFC_I2C_0_SDA;
+#endif
+#ifdef ESPFC_SPI_0
+  _model.config.pin[PIN_SPI_0_SCK] = ESPFC_SPI_0_SCK;
+  _model.config.pin[PIN_SPI_0_MOSI] = ESPFC_SPI_0_MOSI;
+  _model.config.pin[PIN_SPI_0_MISO] = ESPFC_SPI_0_MISO;
+  _model.config.pin[PIN_SPI_CS0] = ESPFC_SPI_CS_GYRO;
+  _model.config.pin[PIN_SPI_CS1] = ESPFC_SPI_CS_BARO;
+  _model.config.pin[PIN_SPI_CS2] = -1;
+#endif
+
+  _model.config.gyro.bus = BUS_SPI;
+  _model.config.gyro.dev = GYRO_AUTO;
+  _model.config.gyro.dlpf = GYRO_DLPF_256;
+  _model.config.gyro.align = ALIGN_DEFAULT;
+  _model.config.gyro.filter = FilterConfig(FILTER_PT1, 100);
+  _model.config.gyro.filter2 = FilterConfig(FILTER_PT1, 100);
+  _model.config.gyro.filter3 = FilterConfig(FILTER_NONE, 0);
+  _model.config.gyro.notch1Filter = FilterConfig(FILTER_NOTCH, 0, 0);
+  _model.config.gyro.notch2Filter = FilterConfig(FILTER_NOTCH, 0, 0);
+  _model.config.gyro.dynLpfFilter = FilterConfig(FILTER_PT1, 0, 0);
+  _model.config.gyro.dynamicFilter.count = 0;
+  _model.config.gyro.rpmFilter.harmonics = 0;
+
+  _model.config.accel.bus = BUS_SPI;
+#if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
+  _model.config.accel.dev = GYRO_NONE;
+#else
+  _model.config.accel.dev = GYRO_AUTO;
+#endif
+  _model.config.baro.dev = BARO_NONE;
+  _model.config.mag.dev = MAG_NONE;
+  _model.config.fusion.mode = FUSION_NONE;
+  _model.config.featureMask = FEATURE_RX_SERIAL;
+  _model.config.loopSync = 1;
+  _model.config.mixerSync = 1;
+  _model.config.output.protocol = ESC_PROTOCOL_DISABLED;
+  _model.config.output.dshotTelemetry = false;
+  _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
+  _model.config.blackbox.pDenom = 0;
+  _model.config.debug.mode = DEBUG_GYRO_SCALED;
+
+  for (int i = 0; i < SERIAL_UART_COUNT; i++)
+  {
+    _model.config.serial[i].functionMask = SERIAL_FUNCTION_NONE;
+    _model.config.serial[i].baud = SERIAL_SPEED_115200;
+    _model.config.serial[i].blackboxBaud = SERIAL_SPEED_NONE;
+  }
+#ifdef ESPFC_SERIAL_USB
+  _model.config.serial[SERIAL_USB].id = SERIAL_ID_USB_VCP;
+  _model.config.serial[SERIAL_USB].functionMask = SERIAL_FUNCTION_MSP;
+#endif
+#ifdef ESPFC_SERIAL_2
+  _model.config.serial[SERIAL_UART_2].id = SERIAL_ID_UART_3;
+  _model.config.serial[SERIAL_UART_2].functionMask = SERIAL_FUNCTION_RX_SERIAL;
+  _model.config.serial[SERIAL_UART_2].baud = SERIAL_SPEED_400000;
+#endif
+#endif
 }
 
 // other task

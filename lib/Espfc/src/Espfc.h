@@ -23,10 +23,25 @@ class Espfc
     int begin();
     int update(bool externalTrigger = false);
     int updateOther();
+    int updateSerialOnly();
+    void forceDroneProtoBenchConfig();
 
     int getGyroInterval() const
     {
       return _model.state.gyro.timer.interval;
+    }
+
+    void setDebugMode(DebugMode mode)
+    {
+      _model.config.debug.mode = mode;
+    }
+
+    void setDebugValue(uint8_t index, int16_t value)
+    {
+      if(index < 8)
+      {
+        _model.state.debug[index] = value;
+      }
     }
 
   private:

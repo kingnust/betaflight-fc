@@ -1,4 +1,5 @@
 #include "SensorManager.h"
+#include "Debug_Espfc.h"
 
 namespace Espfc {
 
@@ -10,15 +11,31 @@ SensorManager::SensorManager(Model& model):
 
 int SensorManager::begin()
 {
+  DRONE_PROTO_DEBUG_LINE("sensor.begin start");
+  DRONE_PROTO_DEBUG_LINE("sensor before gyro.begin");
   _gyro.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor after gyro.begin");
+#if defined(ESPFC_DRONE_PROTO_GYRO_ONLY)
+  DRONE_PROTO_DEBUG_LINE("sensor gyro-only return");
+  return 1;
+#endif
+  DRONE_PROTO_DEBUG_LINE("sensor before accel.begin");
   _accel.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before mag.begin");
   _mag.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before baro.begin");
   _baro.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before voltage.begin");
   _voltage.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before aux.begin");
   _aux.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before fusion.begin");
   _fusion.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before altitude.begin");
   _altitude.begin();
+  DRONE_PROTO_DEBUG_LINE("sensor before button.begin");
   _button.begin(_model.config.pin[PIN_BUTTON]);
+  DRONE_PROTO_DEBUG_LINE("sensor.begin done");
 
   return 1;
 }

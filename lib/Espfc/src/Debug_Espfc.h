@@ -3,6 +3,16 @@
 
 #include <Arduino.h>
 
+#ifdef ESPFC_DRONE_PROTO_ACTIVE_DEBUG
+#define DRONE_PROTO_DEBUG_LINE(v) do { Serial.print("ACTIVE BMI088 DEBUG: "); Serial.println(v); Serial.flush(); } while(0)
+#define DRONE_PROTO_DEBUG_VALUE(k, v) do { Serial.print("ACTIVE BMI088 DEBUG: "); Serial.print(k); Serial.print("="); Serial.println(v); Serial.flush(); } while(0)
+#define DRONE_PROTO_DEBUG_HEX(k, v) do { Serial.print("ACTIVE BMI088 DEBUG: "); Serial.print(k); Serial.print("=0x"); Serial.println(v, HEX); Serial.flush(); } while(0)
+#else
+#define DRONE_PROTO_DEBUG_LINE(v)
+#define DRONE_PROTO_DEBUG_VALUE(k, v)
+#define DRONE_PROTO_DEBUG_HEX(k, v)
+#endif
+
 #ifdef ESPFC_DEBUG_PIN
 #include "Hal/Gpio.h"
 #define PIN_DEBUG(v) ::Espfc::Hal::Gpio::digitalWrite(ESPFC_DEBUG_PIN, v)

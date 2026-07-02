@@ -85,7 +85,11 @@
 #define SERIAL_TX_FIFO_SIZE 0xFF
 
 #define ESPFC_SPI_0
+#if defined(ESPFC_TARGET_DRONE_PROTO)
+#define ESPFC_SPI_0_DEV SPI
+#else
 #define ESPFC_SPI_0_DEV SPI1
+#endif
 #if defined(ESPFC_TARGET_DRONE_PROTO)
 #define ESPFC_SPI_0_SCK 9
 #define ESPFC_SPI_0_MOSI 11
