@@ -3,14 +3,22 @@
 #include "Hardware.h"
 #include <cmath>
 
-#if defined(ESPFC_TARGET_DRONE_PROTO)
+#if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 namespace {
 
 TwoWire vl53Wire(1);
 
+constexpr uint8_t VL53L1X_ADDRESS = 0x29;
+
 int16_t debugClamp(uint32_t value)
 {
   return value > 32767u ? 32767 : (int16_t)value;
+}
+
+bool i2cDevicePresent(TwoWire& bus, uint8_t address)
+{
+  bus.beginTransmission(address);
+  return bus.endTransmission() == 0;
 }
 
 } // namespace
@@ -22,7 +30,7 @@ AuxSensor::AuxSensor(Model& model): _model(model) {}
 
 int AuxSensor::begin()
 {
-#if defined(ESPFC_TARGET_DRONE_PROTO)
+#if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 #if defined(ESPFC_SPI_0)
   if (Device::BusSPI* spi = Device::getMainSpiBus())
   {
@@ -41,14 +49,18 @@ int AuxSensor::begin()
 
   vl53Wire.begin(ESPFC_VL53_I2C_SDA, ESPFC_VL53_I2C_SCL, _model.config.i2cSpeed * 1000ul);
   vl53Wire.setTimeOut(50);
-  _range.setBus(&vl53Wire);
-  _range.setTimeout(50);
-  _rangeStarted = _range.init();
-  if (_rangeStarted)
+  delay(10);
+  if (i2cDevicePresent(vl53Wire, VL53L1X_ADDRESS))
   {
-    _range.setDistanceMode(VL53L1X::Long);
-    _range.setMeasurementTimingBudget(50000);
-    _range.startContinuous(50);
+    _range.setBus(&vl53Wire);
+    _range.setTimeout(50);
+    _rangeStarted = _range.init();
+    if (_rangeStarted)
+    {
+      _range.setDistanceMode(VL53L1X::Long);
+      _range.setMeasurementTimingBudget(50000);
+      _range.startContinuous(50);
+    }
   }
   _model.state.aux.range.present = _rangeStarted;
   _model.logger.info().log(F("AUX VL53L1X")).logln(_rangeStarted ? "Y" : "");
@@ -59,7 +71,7 @@ int AuxSensor::begin()
 
 int AuxSensor::update()
 {
-#if defined(ESPFC_TARGET_DRONE_PROTO)
+#if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
   const uint32_t now = millis();
   int updated = 0;
 

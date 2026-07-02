@@ -447,6 +447,10 @@ class Model
 
       // init timers
       // sample rate = clock / ( divider + 1)
+      if(state.gyro.rate <= 0)
+      {
+        state.gyro.rate = 1000;
+      }
       state.gyro.timer.setRate(state.gyro.rate);
       int accelRate = Utils::alignToClock(state.gyro.timer.rate, 500);
       state.accel.timer.setRate(state.gyro.timer.rate, state.gyro.timer.rate / accelRate);

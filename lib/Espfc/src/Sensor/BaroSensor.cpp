@@ -11,9 +11,10 @@ int BaroSensor::begin()
 
   _baro = _model.state.baro.dev;
 
+  const int gyroInterval = _model.state.gyro.timer.interval > 0 ? _model.state.gyro.timer.interval : 1000;
   const int delay = _baro->getDelay(BARO_MODE_TEMP) + _baro->getDelay(BARO_MODE_PRESS);
-  const int toGyroRate = (delay / _model.state.gyro.timer.interval) + 1; // number of gyro readings per cycle
-  const int interval = _model.state.gyro.timer.interval * toGyroRate;
+  const int toGyroRate = (delay / gyroInterval) + 1; // number of gyro readings per cycle
+  const int interval = gyroInterval * toGyroRate;
   const int rate = 1000000 / interval;
   const int biasSamples = 3 * rate;
   const auto internalFilter = FILTER_PT1;

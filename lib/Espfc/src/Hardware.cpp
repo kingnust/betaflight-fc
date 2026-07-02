@@ -81,6 +81,14 @@ Hardware::Hardware(Model& model): _model(model) {}
 
 int Hardware::begin()
 {
+#if defined(ESPFC_DRONE_PROTO_SAFE_BOOT)
+  _model.state.gyro.present = false;
+  _model.state.accel.present = false;
+  _model.state.mag.present = false;
+  _model.state.baro.present = false;
+  _model.logger.info().logln(F("DRONE PROTO SAFE BOOT"));
+  return 1;
+#endif
   initBus();
   detectGyro();
   detectMag();

@@ -49,6 +49,10 @@ Espfc::Espfc espfc;
 
     void gyroTimerInit(bool (*isrCb)(void* args), int interval)
     {
+      if(interval <= 0)
+      {
+        interval = 1000;
+      }
       timer_config_t config = {
         .alarm_en = TIMER_ALARM_EN,
         .counter_en = TIMER_PAUSE,

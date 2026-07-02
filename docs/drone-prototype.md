@@ -12,6 +12,8 @@ drone_proto_esp32s3
 
 This environment defines `ESPFC_TARGET_DRONE_PROTO` and uses the `4d_systems_esp32s3_gen4_r8n16` board from the Drone Prototype project.
 
+The merged flash image is written as `firmware_0x00.bin` and a timestamped copy is created beside it on every build, for example `firmware_0x00_20260630_174014.bin`.
+
 ## Supported prototype sensors
 
 | Prototype sensor | ESP-FC role | Bus | Pins | Configurator/CLI device |

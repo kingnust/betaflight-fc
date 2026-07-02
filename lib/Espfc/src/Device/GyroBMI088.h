@@ -142,16 +142,16 @@ private:
     if (_bus->isSPI())
     {
       if (length > sizeof(_buffer) - 1) return false;
-      if (_bus->readFast(_addr, reg, length + 1, _buffer) != length + 1) return false;
+      if (_bus->read(_addr, reg, length + 1, _buffer) != length + 1) return false;
       for (uint8_t i = 0; i < length; i++) data[i] = _buffer[i + 1];
       return true;
     }
-    return _bus->readFast(_addr, reg, length, data) == length;
+    return _bus->read(_addr, reg, length, data) == length;
   }
 
   bool readGyroBytes(uint8_t reg, uint8_t length, uint8_t* data)
   {
-    return _bus->readFast(_gyroAddr, reg, length, data) == length;
+    return _bus->read(_gyroAddr, reg, length, data) == length;
   }
 
   bool writeAccelByte(uint8_t reg, uint8_t value)
