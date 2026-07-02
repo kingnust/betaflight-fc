@@ -174,7 +174,13 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.accel.dev = GYRO_AUTO;
 #endif
   _model.config.baro.dev = BARO_NONE;
+#if defined(ESPFC_DRONE_PROTO_ENABLE_BMM150)
+  _model.config.mag.bus = BUS_I2C;
+  _model.config.mag.dev = MAG_BMM150;
+  _model.config.mag.align = ALIGN_DEFAULT;
+#else
   _model.config.mag.dev = MAG_NONE;
+#endif
 #if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
   _model.config.fusion.mode = FUSION_NONE;
 #else

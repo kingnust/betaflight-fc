@@ -206,17 +206,28 @@ void Hardware::detectGyro()
 
 void Hardware::detectMag()
 {
+  DRONE_PROTO_DEBUG_LINE("detectMag start");
   if (_model.config.mag.dev == MAG_NONE) return;
 
   Device::MagDevice* detectedMag = nullptr;
 #if defined(ESPFC_I2C_0)
   if (_model.config.pin[PIN_I2C_0_SDA] != -1 && _model.config.pin[PIN_I2C_0_SCL] != -1)
   {
-    if (!detectedMag && detectDevice(ak8963, i2cBus)) detectedMag = &ak8963;
-    if (!detectedMag && detectDevice(hmc5883l, i2cBus)) detectedMag = &hmc5883l;
-    if (!detectedMag && detectDevice(qmc5883l, i2cBus)) detectedMag = &qmc5883l;
-    if (!detectedMag && detectDevice(qmc5883p, i2cBus)) detectedMag = &qmc5883p;
-    if (!detectedMag && detectDevice(bmm150, i2cBus)) detectedMag = &bmm150;
+    DRONE_PROTO_DEBUG_VALUE("detectMag sda", _model.config.pin[PIN_I2C_0_SDA]);
+    DRONE_PROTO_DEBUG_VALUE("detectMag scl", _model.config.pin[PIN_I2C_0_SCL]);
+    if (_model.config.mag.dev == MAG_BMM150)
+    {
+      DRONE_PROTO_DEBUG_LINE("detectMag before bmm150 detectDevice");
+      if (!detectedMag && detectDevice(bmm150, i2cBus)) detectedMag = &bmm150;
+    }
+    else
+    {
+      if (!detectedMag && detectDevice(ak8963, i2cBus)) detectedMag = &ak8963;
+      if (!detectedMag && detectDevice(hmc5883l, i2cBus)) detectedMag = &hmc5883l;
+      if (!detectedMag && detectDevice(qmc5883l, i2cBus)) detectedMag = &qmc5883l;
+      if (!detectedMag && detectDevice(qmc5883p, i2cBus)) detectedMag = &qmc5883p;
+      if (!detectedMag && detectDevice(bmm150, i2cBus)) detectedMag = &bmm150;
+    }
   }
 #endif
   if (gyroSlaveBus.getBus())
@@ -229,6 +240,8 @@ void Hardware::detectMag()
   _model.state.mag.dev = detectedMag;
   _model.state.mag.present = (bool)detectedMag;
   _model.state.mag.rate = detectedMag ? detectedMag->getRate() : 0;
+  DRONE_PROTO_DEBUG_VALUE("detectMag type", detectedMag ? detectedMag->getType() : MAG_NONE);
+  DRONE_PROTO_DEBUG_VALUE("detectMag rate", _model.state.mag.rate);
 }
 
 void Hardware::detectBaro()
