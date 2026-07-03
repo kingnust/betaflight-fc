@@ -691,9 +691,19 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_ALTITUDE:
-      r.writeU32(lrintf(_model.state.altitude.height * 100.f));  // alt [cm]
-      r.writeU16(lrintf(_model.state.altitude.vario * 100.f));   // vario [cm/s]
+    {
+      const int32_t altitudeCm = std::clamp(
+        lrintf(_model.state.baro.altitudeGround * 100.f),
+        (long)std::numeric_limits<int32_t>::min(),
+        (long)std::numeric_limits<int32_t>::max());
+      const int16_t varioCms = std::clamp(
+        lrintf(_model.state.baro.vario * 100.f),
+        (long)std::numeric_limits<int16_t>::min(),
+        (long)std::numeric_limits<int16_t>::max());
+      r.writeU32((uint32_t)altitudeCm); // alt [cm], signed int32 on MSP wire
+      r.writeU16((uint16_t)varioCms);   // vario [cm/s], signed int16 on MSP wire
       break;
+    }
 
     case MSP_BEEPER_CONFIG:
       r.writeU32(~_model.config.buzzer.beeperMask); // beeper mask

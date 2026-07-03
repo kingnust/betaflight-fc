@@ -1,9 +1,11 @@
 #include "BaroSensor.hpp"
+#include "Utils/Math.hpp"
+#include <cmath>
 #include <functional>
 
 namespace Espfc::Sensor {
 
-BaroSensor::BaroSensor(Model& model): _model(model), _state(BARO_STATE_INIT), _counter(0) {}
+BaroSensor::BaroSensor(Model& model): _model(model), _state(BARO_STATE_INIT), _counter(0), _pressureReady(false) {}
 
 int BaroSensor::begin()
 {
@@ -76,8 +78,10 @@ int BaroSensor::read()
       _counter = 1;
       return 1;
     case BARO_STATE_PRESS_GET:
-      readPressure();
-      updateAltitude();
+      if (readPressure())
+      {
+        updateAltitude();
+      }
       if (--_counter > 0)
       {
         _baro->setMode(BARO_MODE_PRESS);
@@ -105,11 +109,36 @@ void BaroSensor::readTemperature()
   _model.state.baro.temperature = _temperatureFilter.update(temp);
 }
 
-void BaroSensor::readPressure()
+bool BaroSensor::readPressure()
 {
   float press = _model.state.baro.pressureRaw = _baro->readPressure();
+  if (!std::isfinite(press) || press < 30000.0f || press > 120000.0f)
+  {
+    return false;
+  }
+
+  if (!_pressureReady)
+  {
+    for (int i = 0; i < 8; i++)
+    {
+      _model.state.baro.pressure = _pressureFilter.update(press);
+    }
+    _model.state.baro.altitudeRaw = Utils::toAltitude(_model.state.baro.pressure);
+    for (int i = 0; i < 8; i++)
+    {
+      _model.state.baro.altitude = _altitudeFilter.update(_model.state.baro.altitudeRaw);
+    }
+    _model.state.baro.altitudeBias = _model.state.baro.altitude;
+    _model.state.baro.altitudeGround = 0.0f;
+    _model.state.baro.altitudePrev = _model.state.baro.altitude;
+    _model.state.baro.vario = 0.0f;
+    _pressureReady = true;
+    return false;
+  }
+
   // press = _pressureMedianFilter.update(press);
   _model.state.baro.pressure = _pressureFilter.update(press);
+  return true;
 }
 
 void BaroSensor::updateAltitude()

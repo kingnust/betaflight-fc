@@ -1312,8 +1312,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.baro.pressure);
     s.print(F("Pa "));
     s.print(_model.state.baro.temperature);
-    s.print(F("C alt="));
-    s.println(_model.state.baro.altitudeGround);
+    s.print(F("C alt_raw="));
+    s.print(_model.state.baro.altitudeRaw);
+    s.print(F(" alt="));
+    s.print(_model.state.baro.altitudeGround);
+    s.print(F(" vario="));
+    s.println(_model.state.baro.vario);
 
     if(_model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive())
     {

@@ -25,7 +25,7 @@ public:
 
 private:
   void readTemperature();
-  void readPressure();
+  bool readPressure();
   void updateAltitude();
 
   Model& _model;
@@ -39,6 +39,7 @@ private:
   Utils::Filter _varioFilter;
   uint32_t _wait;
   int32_t _counter;
+  bool _pressureReady;
 };
 
 } // namespace Espfc::Sensor

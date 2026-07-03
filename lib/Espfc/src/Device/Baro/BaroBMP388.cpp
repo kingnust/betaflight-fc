@@ -1,11 +1,13 @@
 #include "BaroBMP388.hpp"
 #include "Debug_Espfc.h"
 #include <Arduino.h>
+#include <cmath>
 
 #define BMP388_ADDRESS_FIRST       0x77
 #define BMP388_ADDRESS_SECOND      0x76
 
 #define BMP388_CHIP_ID_REG         0x00
+#define BMP388_STATUS_REG          0x03
 #define BMP388_DATA_REG            0x04
 #define BMP388_PWR_CTRL_REG        0x1B
 #define BMP388_OSR_REG             0x1C
@@ -20,7 +22,10 @@
 
 #define BMP388_PRESS_EN            0x01
 #define BMP388_TEMP_EN             0x02
-#define BMP388_MODE_NORMAL         0x30
+#define BMP388_MODE_FORCED         0x10
+#define BMP388_MODE_SLEEP          0x00
+#define BMP388_DRDY_PRESS          0x20
+#define BMP388_DRDY_TEMP           0x40
 
 #define BMP388_PRESS_OS_4X         0x02
 #define BMP388_TEMP_OS_8X          0x18
@@ -64,7 +69,7 @@ int BaroBMP388::begin(BusDevice* bus, uint8_t addr)
     return 0;
   }
 
-  if (!writeReg(BMP388_PWR_CTRL_REG, 0))
+  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_SLEEP))
   {
     DRONE_PROTO_DEBUG_LINE("bmp388 standby failed");
     return 0;
@@ -85,14 +90,7 @@ int BaroBMP388::begin(BusDevice* bus, uint8_t addr)
     DRONE_PROTO_DEBUG_LINE("bmp388 config failed");
     return 0;
   }
-  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_NORMAL | BMP388_TEMP_EN | BMP388_PRESS_EN))
-  {
-    DRONE_PROTO_DEBUG_LINE("bmp388 normal mode failed");
-    return 0;
-  }
-
-  delay(40);
-  readMeasurement();
+  if (!readMeasurement()) return 0;
 
   return 1;
 }
@@ -144,13 +142,30 @@ bool BaroBMP388::writeReg(uint8_t reg, uint8_t value)
 bool BaroBMP388::readMeasurement()
 {
   uint8_t data[6] = {0};
+  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_FORCED | BMP388_TEMP_EN | BMP388_PRESS_EN)) return false;
+  delay(30);
+
+  uint8_t status = 0;
+  if (_bus->read(_addr, BMP388_STATUS_REG, 1, &status) != 1) return false;
+  if ((status & (BMP388_DRDY_PRESS | BMP388_DRDY_TEMP)) != (BMP388_DRDY_PRESS | BMP388_DRDY_TEMP))
+  {
+    DRONE_PROTO_DEBUG_HEX("bmp388 data not ready", status);
+    return false;
+  }
+
   if (_bus->readFast(_addr, BMP388_DATA_REG, 6, data) != 6) return false;
 
   uint32_t rawPressure = ((uint32_t)data[2] << 16) | ((uint32_t)data[1] << 8) | data[0];
   uint32_t rawTemperature = ((uint32_t)data[5] << 16) | ((uint32_t)data[4] << 8) | data[3];
+  if (rawPressure == 0 || rawTemperature == 0) return false;
 
   _temperature = (float)compensateTemperature(rawTemperature);
   _pressure = (float)compensatePressure(rawPressure);
+  if (!std::isfinite(_temperature) || !std::isfinite(_pressure) || _pressure < 30000.0f || _pressure > 120000.0f)
+  {
+    DRONE_PROTO_DEBUG_VALUE("bmp388 bad pressure", _pressure);
+    return false;
+  }
 
   return true;
 }
