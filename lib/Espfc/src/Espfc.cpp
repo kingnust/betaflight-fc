@@ -203,7 +203,16 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.featureMask = FEATURE_RX_SERIAL;
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_PWM)
+  _model.config.output.protocol = ESC_PROTOCOL_PWM;
+  _model.config.output.async = true;
+  _model.config.output.rate = 50;
+  _model.config.output.minCommand = 1000;
+  _model.config.output.minThrottle = 1070;
+  _model.config.output.maxThrottle = 2000;
+#else
   _model.config.output.protocol = ESC_PROTOCOL_DISABLED;
+#endif
   _model.config.output.dshotTelemetry = false;
   _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
   _model.config.blackbox.pDenom = 0;

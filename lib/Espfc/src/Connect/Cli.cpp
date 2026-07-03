@@ -1319,10 +1319,20 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" vario="));
     s.println(_model.state.baro.vario);
 
-    if(_model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive())
+    const bool auxStatusVisible =
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+      true ||
+#endif
+      _model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive();
+
+    if(auxStatusVisible)
     {
       s.print(F("        aux:"));
-      if(_model.rangefinderActive())
+      if(
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+        true ||
+#endif
+        _model.rangefinderActive())
       {
         s.print(F(" range="));
         s.print(_model.state.aux.range.distanceMm);
