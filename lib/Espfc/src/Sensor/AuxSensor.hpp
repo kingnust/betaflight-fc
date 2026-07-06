@@ -3,7 +3,6 @@
 #include "Model.h"
 
 #if defined(ESPFC_TARGET_DRONE_PROTO) && !defined(ESPFC_DRONE_PROTO_DISABLE_AUX)
-#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X) || defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)
 #if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
 #define ESPFC_DRONE_PROTO_AUX_VL53L1X
 #endif
@@ -11,11 +10,6 @@
 #define ESPFC_DRONE_PROTO_AUX_PMW3901
 #endif
 #if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)
-#define ESPFC_DRONE_PROTO_AUX_TCS34725
-#endif
-#else
-#define ESPFC_DRONE_PROTO_AUX_VL53L1X
-#define ESPFC_DRONE_PROTO_AUX_PMW3901
 #define ESPFC_DRONE_PROTO_AUX_TCS34725
 #endif
 #endif
@@ -55,11 +49,12 @@ class AuxSensor
     uint32_t _lastFlowMs = 0;
 #endif
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
-    void beginRangefinder(uint32_t now);
+    bool beginRangefinder(uint32_t now);
     bool rangefinderFailure(uint8_t status, uint32_t now);
+    void stopRangefinder(uint8_t status, uint32_t now);
+    bool updateRangefinder(uint32_t now);
     static void rangefinderTaskEntry(void* arg);
     void rangefinderTask();
-    bool updateRangefinder(uint32_t now);
 
     VL53L1X _range;
     TaskHandle_t _rangeTask = nullptr;

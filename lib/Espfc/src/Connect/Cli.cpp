@@ -24,6 +24,44 @@ namespace Espfc {
 
 namespace Connect {
 
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+namespace {
+
+const __FlashStringHelper* rangeStatusName(uint8_t status)
+{
+  switch(status)
+  {
+    case 0: return F("valid");
+    case 1: return F("sigma_fail");
+    case 2: return F("signal_fail");
+    case 3: return F("min_clipped");
+    case 4: return F("out_of_bounds");
+    case 5: return F("hardware_fail");
+    case 6: return F("valid_no_wrap");
+    case 7: return F("wrap_fail");
+    case 9: return F("xtalk_fail");
+    case 10: return F("sync");
+    case 13: return F("min_fail");
+    case 240: return F("bus_stuck");
+    case 241: return F("task_fail");
+    case 242: return F("read_i2c_fail");
+    case 245: return F("start_fail");
+    case 246: return F("budget_fail");
+    case 247: return F("mode_fail");
+    case 248: return F("init_timeout");
+    case 249: return F("init_fail");
+    case 250: return F("wrong_id");
+    case 251: return F("id_read_fail");
+    case 252: return F("not_found");
+    case 254: return F("started");
+    case 255: return F("waiting");
+    default: return F("unknown");
+  }
+}
+
+} // namespace
+#endif
+
 void Cli::Param::print(Stream& stream) const
 {
   if(!addr)
@@ -1338,6 +1376,11 @@ void Cli::execute(CliCmd& cmd, Stream& s)
         s.print(_model.state.aux.range.distanceMm);
         s.print(F("mm status="));
         s.print(_model.state.aux.range.status);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+        s.print('(');
+        s.print(rangeStatusName(_model.state.aux.range.status));
+        s.print(')');
+#endif
       }
       if(_model.opticalFlowActive())
       {

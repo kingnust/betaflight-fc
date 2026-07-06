@@ -154,6 +154,43 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.pin[PIN_SPI_CS2] = -1;
 #endif
 
+#if defined(ESPFC_DRONE_PROTO_BETAFLIGHT_SONAR_ONLY)
+  _model.config.gyro.bus = BUS_NONE;
+  _model.config.gyro.dev = GYRO_NONE;
+  _model.config.accel.bus = BUS_NONE;
+  _model.config.accel.dev = GYRO_NONE;
+  _model.config.baro.bus = BUS_NONE;
+  _model.config.baro.dev = BARO_NONE;
+  _model.config.mag.bus = BUS_NONE;
+  _model.config.mag.dev = MAG_NONE;
+  _model.config.fusion.mode = FUSION_NONE;
+  _model.config.featureMask = 0;
+  _model.config.loopSync = 1;
+  _model.config.mixerSync = 1;
+  _model.config.output.protocol = ESC_PROTOCOL_DISABLED;
+  _model.config.output.dshotTelemetry = false;
+  _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
+  _model.config.blackbox.pDenom = 0;
+  _model.config.debug.mode = DEBUG_RANGEFINDER;
+
+  for (int i = 0; i < SERIAL_UART_COUNT; i++)
+  {
+    _model.config.serial[i].functionMask = SERIAL_FUNCTION_NONE;
+    _model.config.serial[i].baud = SERIAL_SPEED_115200;
+    _model.config.serial[i].blackboxBaud = SERIAL_SPEED_NONE;
+  }
+#ifdef ESPFC_SERIAL_USB
+  _model.config.serial[SERIAL_USB].id = SERIAL_ID_USB_VCP;
+  _model.config.serial[SERIAL_USB].functionMask = SERIAL_FUNCTION_MSP;
+#endif
+#ifdef ESPFC_SERIAL_0
+  _model.config.serial[SERIAL_UART_0].id = SERIAL_ID_UART_1;
+  _model.config.serial[SERIAL_UART_0].functionMask = SERIAL_FUNCTION_MSP;
+  _model.config.serial[SERIAL_UART_0].baud = SERIAL_SPEED_115200;
+#endif
+  return;
+#endif
+
   _model.config.gyro.bus = BUS_SPI;
   _model.config.gyro.dev = GYRO_AUTO;
   _model.config.gyro.dlpf = GYRO_DLPF_256;
@@ -227,6 +264,11 @@ void Espfc::forceDroneProtoBenchConfig()
 #ifdef ESPFC_SERIAL_USB
   _model.config.serial[SERIAL_USB].id = SERIAL_ID_USB_VCP;
   _model.config.serial[SERIAL_USB].functionMask = SERIAL_FUNCTION_MSP;
+#endif
+#ifdef ESPFC_SERIAL_0
+  _model.config.serial[SERIAL_UART_0].id = SERIAL_ID_UART_1;
+  _model.config.serial[SERIAL_UART_0].functionMask = SERIAL_FUNCTION_MSP;
+  _model.config.serial[SERIAL_UART_0].baud = SERIAL_SPEED_115200;
 #endif
 #ifdef ESPFC_SERIAL_2
   _model.config.serial[SERIAL_UART_2].id = SERIAL_ID_UART_3;

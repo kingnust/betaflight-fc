@@ -113,14 +113,13 @@
 #if defined(ESPFC_TARGET_DRONE_PROTO)
 #define ESPFC_I2C_0_SCL 16
 #define ESPFC_I2C_0_SDA 17
+#define ESPFC_I2C_0_SOFT
 #define ESPFC_VL53_I2C_SCL 41
 #define ESPFC_VL53_I2C_SDA 42
 #define ESPFC_TCS_LED_PIN 19
 #else
 #define ESPFC_I2C_0_SCL 10
 #define ESPFC_I2C_0_SDA 9
-#endif
-#if !defined(ESPFC_TARGET_DRONE_PROTO)
 #define ESPFC_I2C_0_SOFT
 #endif
 

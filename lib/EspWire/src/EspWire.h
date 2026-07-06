@@ -55,6 +55,7 @@ class EspTwoWire : public Stream
     void begin(int);
     void setClock(uint32_t);
     void setClockStretchLimit(uint32_t);
+    void setTimeout(uint16_t) {}
     void beginTransmission(uint8_t)/* IRAM_ATTR */;
     void beginTransmission(int);
     uint8_t endTransmission(void) /* IRAM_ATTR */;

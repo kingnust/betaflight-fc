@@ -705,6 +705,14 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
     }
 
+    case MSP_SONAR_ALTITUDE:
+    {
+      const bool fresh = _model.rangefinderActive() && (millis() - _model.state.aux.range.lastUpdate) < 1000;
+      const int32_t sonarCm = fresh ? (int32_t)((_model.state.aux.range.distanceMm + 5u) / 10u) : -1;
+      r.writeU32((uint32_t)sonarCm); // sonar altitude [cm], signed int32 on MSP wire
+      break;
+    }
+
     case MSP_BEEPER_CONFIG:
       r.writeU32(~_model.config.buzzer.beeperMask); // beeper mask
       r.writeU8(0);  // dshot beacon tone
@@ -1673,6 +1681,7 @@ bool MspProcessor::debugSkip(uint8_t cmd)
   if(cmd == MSP_ANALOG) return true;
   if(cmd == MSP_ATTITUDE) return true;
   if(cmd == MSP_ALTITUDE) return true;
+  if(cmd == MSP_SONAR_ALTITUDE) return true;
   if(cmd == MSP_RC) return true;
   if(cmd == MSP_RAW_IMU) return true;
   if(cmd == MSP_MOTOR) return true;
