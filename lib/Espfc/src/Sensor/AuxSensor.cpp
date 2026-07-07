@@ -13,6 +13,15 @@
 #define SONAR_DEBUG_HEX(k, v)
 #endif
 
+#if !defined(ESPFC_DRONE_PROTO_SONAR_DEBUG)
+#undef SONAR_DEBUG_LINE
+#undef SONAR_DEBUG_VALUE
+#undef SONAR_DEBUG_HEX
+#define SONAR_DEBUG_LINE(v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
+#define SONAR_DEBUG_VALUE(k, v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
+#define SONAR_DEBUG_HEX(k, v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
+#endif
+
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 namespace {
 
@@ -30,7 +39,7 @@ constexpr uint32_t VL53L1X_BOOT_DELAY_MS = 1500;
 constexpr uint32_t VL53L1X_INIT_RETRY_MS = 3000;
 constexpr uint16_t VL53L1X_I2C_TIMEOUT_MS = 100;
 constexpr uint16_t VL53L1X_SENSOR_TIMEOUT_MS = 500;
-constexpr uint32_t VL53L1X_UPDATE_MS = 250;
+constexpr uint32_t VL53L1X_UPDATE_MS = 500;
 constexpr uint32_t VL53L1X_MEASUREMENT_BUDGET_US = 50000;
 constexpr uint8_t VL53L1X_MAX_FAILURES = 4;
 constexpr uint32_t VL53L1X_TASK_STACK_BYTES = 8192;

@@ -189,6 +189,9 @@ void updateProbe() {}
 
 void setup()
 {
+#if defined(ESPFC_DRONE_PROTO_WATCHDOG_SAFE) && defined(ESP32)
+  disableCore0WDT();
+#endif
 #if defined(ESPFC_DRONE_PROTO_ACTIVE_DEBUG)
   Serial.begin(115200);
   delay(1000);
