@@ -61,8 +61,16 @@
 
 #define MSP_PROTOCOL_VERSION                0
 
+#ifndef ESPFC_COMPAT_API_VERSION_MAJOR
 #define API_VERSION_MAJOR                   1  // increment when major changes are made
+#else
+#define API_VERSION_MAJOR                   ESPFC_COMPAT_API_VERSION_MAJOR
+#endif
+#ifndef ESPFC_COMPAT_API_VERSION_MINOR
 #define API_VERSION_MINOR                   43 // increment after a release, to set the version for all changes to go into the following release (if no changes to MSP are made between the releases, this can be reverted before the release)
+#else
+#define API_VERSION_MINOR                   ESPFC_COMPAT_API_VERSION_MINOR
+#endif
 
 #define API_VERSION_LENGTH                  2
 

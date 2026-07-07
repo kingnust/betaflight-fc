@@ -55,9 +55,21 @@
 #define PID_PROCESS_DENOM_DEFAULT       1
 
 #define FC_FIRMWARE_NAME            "Betaflight"
+#ifndef ESPFC_COMPAT_FC_VERSION_MAJOR
 #define FC_VERSION_MAJOR            4  // increment when a major release is made (big new feature, etc)
+#else
+#define FC_VERSION_MAJOR            ESPFC_COMPAT_FC_VERSION_MAJOR
+#endif
+#ifndef ESPFC_COMPAT_FC_VERSION_MINOR
 #define FC_VERSION_MINOR            4  // increment when a minor release is made (small new feature, change etc)
+#else
+#define FC_VERSION_MINOR            ESPFC_COMPAT_FC_VERSION_MINOR
+#endif
+#ifndef ESPFC_COMPAT_FC_VERSION_PATCH_LEVEL
 #define FC_VERSION_PATCH_LEVEL      0  // increment when a bug is fixed
+#else
+#define FC_VERSION_PATCH_LEVEL      ESPFC_COMPAT_FC_VERSION_PATCH_LEVEL
+#endif
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
