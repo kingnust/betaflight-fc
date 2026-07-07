@@ -45,8 +45,11 @@ class AuxSensor
     Model& _model;
 
 #if defined(ESPFC_DRONE_PROTO_AUX_PMW3901)
+    bool beginOpticalFlow(uint32_t now);
+
     Device::OpticalFlowPMW3901 _flow;
     uint32_t _lastFlowMs = 0;
+    uint32_t _lastFlowInitMs = 0;
 #endif
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
     bool beginRangefinder(uint32_t now);

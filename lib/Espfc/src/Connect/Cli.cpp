@@ -1361,6 +1361,9 @@ void Cli::execute(CliCmd& cmd, Stream& s)
 #if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
       true ||
 #endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+      true ||
+#endif
       _model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive();
 
     if(auxStatusVisible)
@@ -1382,14 +1385,25 @@ void Cli::execute(CliCmd& cmd, Stream& s)
         s.print(')');
 #endif
       }
-      if(_model.opticalFlowActive())
+      if(
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+        true ||
+#endif
+        _model.opticalFlowActive())
       {
-        s.print(F(" flow="));
-        s.print(_model.state.aux.flow.deltaX);
-        s.print('/');
-        s.print(_model.state.aux.flow.deltaY);
-        s.print(F(" frames="));
-        s.print(_model.state.aux.flow.frameCount);
+        s.print(F(" pmw_id=0x"));
+        s.print(_model.state.aux.flow.chipId, HEX);
+        s.print(F("/0x"));
+        s.print(_model.state.aux.flow.inverseChipId, HEX);
+        if(_model.opticalFlowActive())
+        {
+          s.print(F(" flow="));
+          s.print(_model.state.aux.flow.deltaX);
+          s.print('/');
+          s.print(_model.state.aux.flow.deltaY);
+          s.print(F(" frames="));
+          s.print(_model.state.aux.flow.frameCount);
+        }
       }
       if(_model.colorSensorActive())
       {

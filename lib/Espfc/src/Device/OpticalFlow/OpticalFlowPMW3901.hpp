@@ -15,6 +15,8 @@ class OpticalFlowPMW3901
     bool begin(BusSPI* bus, int8_t cs);
     bool readMotion(int16_t& deltaX, int16_t& deltaY);
     bool isPresent() const { return _present; }
+    uint8_t getChipId() const { return _chipId; }
+    uint8_t getInverseChipId() const { return _inverseChipId; }
 
   private:
     void writeReg(uint8_t reg, uint8_t value);
@@ -24,6 +26,8 @@ class OpticalFlowPMW3901
     BusSPI* _bus = nullptr;
     int8_t _cs = -1;
     bool _present = false;
+    uint8_t _chipId = 0;
+    uint8_t _inverseChipId = 0;
 };
 
 } // namespace Espfc::Device

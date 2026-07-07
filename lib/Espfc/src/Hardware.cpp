@@ -117,6 +117,10 @@ void Hardware::initBus()
   DRONE_PROTO_DEBUG_LINE("initBus SPI begin");
   int spiResult = spiBus.begin(_model.config.pin[PIN_SPI_0_SCK], _model.config.pin[PIN_SPI_0_MOSI],
                                _model.config.pin[PIN_SPI_0_MISO]);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) && defined(ESPFC_PMW3901_CS)
+  Hal::Gpio::pinMode(ESPFC_PMW3901_CS, OUTPUT);
+  Hal::Gpio::digitalWrite(ESPFC_PMW3901_CS, HIGH);
+#endif
   _model.logger.info()
       .log(F("SPI"))
       .log(_model.config.pin[PIN_SPI_0_SCK])

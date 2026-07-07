@@ -25,6 +25,11 @@
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 namespace {
 
+#if defined(ESPFC_DRONE_PROTO_AUX_PMW3901)
+constexpr uint32_t PMW3901_BOOT_DELAY_MS = 1000;
+constexpr uint32_t PMW3901_RETRY_MS = 2000;
+#endif
+
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
 TwoWire& rangefinderWire()
 {
@@ -97,6 +102,25 @@ int16_t debugClamp(uint32_t value)
 namespace Espfc::Sensor {
 
 AuxSensor::AuxSensor(Model& model): _model(model) {}
+
+#if defined(ESPFC_DRONE_PROTO_AUX_PMW3901)
+bool AuxSensor::beginOpticalFlow(uint32_t now)
+{
+  _lastFlowInitMs = now + PMW3901_RETRY_MS;
+  if (Device::BusSPI* spi = Device::getMainSpiBus())
+  {
+    _model.state.aux.flow.present = _flow.begin(spi, ESPFC_PMW3901_CS);
+    _model.state.aux.flow.chipId = _flow.getChipId();
+    _model.state.aux.flow.inverseChipId = _flow.getInverseChipId();
+    if (_model.state.aux.flow.present)
+    {
+      _model.logger.info().log(F("AUX PMW3901")).logln(F("Y"));
+    }
+    return _model.state.aux.flow.present;
+  }
+  return false;
+}
+#endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
 void AuxSensor::stopRangefinder(uint8_t status, uint32_t now)
@@ -304,11 +328,10 @@ int AuxSensor::begin()
 {
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 #if defined(ESPFC_DRONE_PROTO_AUX_PMW3901) && defined(ESPFC_SPI_0)
-  if (Device::BusSPI* spi = Device::getMainSpiBus())
-  {
-    _model.state.aux.flow.present = _flow.begin(spi, ESPFC_PMW3901_CS);
-    _model.logger.info().log(F("AUX PMW3901")).logln(_model.state.aux.flow.present ? "Y" : "");
-  }
+  _model.state.aux.flow.present = false;
+  _model.state.aux.flow.chipId = 0;
+  _model.state.aux.flow.inverseChipId = 0;
+  _lastFlowInitMs = millis() + PMW3901_BOOT_DELAY_MS;
 #endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_TCS34725) && defined(ESPFC_I2C_0)
@@ -349,6 +372,11 @@ int AuxSensor::update()
   int updated = 0;
 
 #if defined(ESPFC_DRONE_PROTO_AUX_PMW3901)
+  if (!_model.state.aux.flow.present && now >= _lastFlowInitMs)
+  {
+    beginOpticalFlow(now);
+  }
+
   if (_model.state.aux.flow.present && now - _lastFlowMs >= 20)
   {
     _lastFlowMs = now;

@@ -484,6 +484,8 @@ struct RangefinderState
 struct OpticalFlowState
 {
   bool present = false;
+  uint8_t chipId = 0;
+  uint8_t inverseChipId = 0;
   int16_t deltaX = 0;
   int16_t deltaY = 0;
   uint32_t frameCount = 0;

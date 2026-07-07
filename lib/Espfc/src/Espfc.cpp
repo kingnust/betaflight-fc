@@ -238,6 +238,7 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.fusion.mode = FUSION_COMPLEMENTARY;
 #endif
   _model.config.featureMask = FEATURE_RX_SERIAL;
+  _model.config.input.serialRxProvider = SERIALRX_CRSF;
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
 #if defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_PWM)

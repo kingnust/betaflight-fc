@@ -15,9 +15,11 @@ bool OpticalFlowPMW3901::begin(BusSPI* bus, int8_t cs)
   _bus = bus;
   _cs = cs;
   _present = false;
+  _chipId = 0;
+  _inverseChipId = 0;
 
-  Hal::Gpio::digitalWrite(_cs, HIGH);
   Hal::Gpio::pinMode(_cs, OUTPUT);
+  Hal::Gpio::digitalWrite(_cs, HIGH);
 
   auto& spi = _bus->getDevice();
   spi.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE3));
@@ -32,9 +34,9 @@ bool OpticalFlowPMW3901::begin(BusSPI* bus, int8_t cs)
   writeReg(0x3A, 0x5A);
   delay(5);
 
-  const uint8_t chipId = readReg(0x00);
-  const uint8_t inverseChipId = readReg(0x5F);
-  if (chipId != 0x49 && inverseChipId != 0xB8) return false;
+  _chipId = readReg(0x00);
+  _inverseChipId = readReg(0x5F);
+  if (_chipId != 0x49 && _inverseChipId != 0xB8) return false;
 
   readReg(0x02);
   readReg(0x03);
