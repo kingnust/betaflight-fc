@@ -495,6 +495,7 @@ struct OpticalFlowState
 struct ColorSensorState
 {
   bool present = false;
+  bool ledOn = false;
   uint16_t red = 0;
   uint16_t green = 0;
   uint16_t blue = 0;

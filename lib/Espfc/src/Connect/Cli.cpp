@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "Hardware.h"
 #include "Device/GyroDevice.h"
+#include "Hal/Gpio.h"
 #include "Hal/Pgm.h"
 #include "msp/msp_protocol.h"
 
@@ -1415,6 +1416,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
         s.print(_model.state.aux.color.blue);
         s.print('/');
         s.print(_model.state.aux.color.clear);
+        s.print(F(" led="));
+        s.print(_model.state.aux.color.ledOn ? 1 : 0);
       }
       s.println();
     }
@@ -1528,6 +1531,17 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       }
     }
   }
+#if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725) && defined(ESPFC_TCS_LED_PIN)
+  else if(strcmp_P(cmd.args[0], PSTR("tcsled")) == 0)
+  {
+    const bool on = !cmd.args[1] || String(cmd.args[1]).toInt() != 0;
+    Hal::Gpio::pinMode(ESPFC_TCS_LED_PIN, OUTPUT);
+    Hal::Gpio::digitalWrite(ESPFC_TCS_LED_PIN, on ? HIGH : LOW);
+    _model.state.aux.color.ledOn = on;
+    s.print(F("TCS LED "));
+    s.println(on ? F("ON") : F("OFF"));
+  }
+#endif
   else if(strcmp_P(cmd.args[0], PSTR("logs")) == 0)
   {
     s.print(_model.logger.c_str());

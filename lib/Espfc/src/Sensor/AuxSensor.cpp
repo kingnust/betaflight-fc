@@ -338,6 +338,7 @@ int AuxSensor::begin()
   if (Device::BusI2C* i2c = Device::getMainI2cBus())
   {
     _model.state.aux.color.present = _color.begin(i2c, ESPFC_TCS_LED_PIN);
+    _model.state.aux.color.ledOn = _model.state.aux.color.present;
     _model.logger.info().log(F("AUX TCS34725")).logln(_model.state.aux.color.present ? "Y" : "");
   }
 #endif
