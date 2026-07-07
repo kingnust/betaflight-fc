@@ -63,6 +63,65 @@ const __FlashStringHelper* rangeStatusName(uint8_t status)
 } // namespace
 #endif
 
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+namespace {
+
+static constexpr uint8_t DRONE_PROTO_SERVO_LEDC_CHANNEL = 15;
+static constexpr uint8_t DRONE_PROTO_SERVO_RES_BITS = 16;
+static constexpr uint32_t DRONE_PROTO_SERVO_FREQ_HZ = 50;
+static constexpr uint16_t DRONE_PROTO_SERVO_MIN_US = 1000;
+static constexpr uint16_t DRONE_PROTO_SERVO_MID_US = 1500;
+static constexpr uint16_t DRONE_PROTO_SERVO_MAX_US = 2000;
+static constexpr uint32_t DRONE_PROTO_SERVO_PERIOD_US = 1000000UL / DRONE_PROTO_SERVO_FREQ_HZ;
+
+static int8_t droneProtoServoPin = -1;
+static uint16_t droneProtoServoUs = DRONE_PROTO_SERVO_MID_US;
+
+uint16_t droneProtoServoClampUs(int us)
+{
+  if(us < DRONE_PROTO_SERVO_MIN_US) return DRONE_PROTO_SERVO_MIN_US;
+  if(us > DRONE_PROTO_SERVO_MAX_US) return DRONE_PROTO_SERVO_MAX_US;
+  return us;
+}
+
+uint32_t droneProtoServoDuty(uint16_t us)
+{
+  const uint32_t maxDuty = (1UL << DRONE_PROTO_SERVO_RES_BITS) - 1UL;
+  return ((uint32_t)us * maxDuty + (DRONE_PROTO_SERVO_PERIOD_US / 2)) / DRONE_PROTO_SERVO_PERIOD_US;
+}
+
+void droneProtoServoDetach()
+{
+  if(droneProtoServoPin < 0) return;
+
+  ledcWrite(DRONE_PROTO_SERVO_LEDC_CHANNEL, 0);
+  ledcDetachPin(droneProtoServoPin);
+  Hal::Gpio::pinMode(droneProtoServoPin, OUTPUT);
+  Hal::Gpio::digitalWrite(droneProtoServoPin, LOW);
+  droneProtoServoPin = -1;
+}
+
+void droneProtoServoWrite(uint8_t pin, uint16_t us)
+{
+  if(droneProtoServoPin != -1 && droneProtoServoPin != pin)
+  {
+    droneProtoServoDetach();
+  }
+
+  if(droneProtoServoPin != pin)
+  {
+    ledcSetup(DRONE_PROTO_SERVO_LEDC_CHANNEL, DRONE_PROTO_SERVO_FREQ_HZ, DRONE_PROTO_SERVO_RES_BITS);
+    ledcAttachPin(pin, DRONE_PROTO_SERVO_LEDC_CHANNEL);
+    droneProtoServoPin = pin;
+  }
+
+  droneProtoServoUs = us;
+  ledcWrite(DRONE_PROTO_SERVO_LEDC_CHANNEL, droneProtoServoDuty(us));
+}
+
+} // namespace
+#endif
+
 void Cli::Param::print(Stream& stream) const
 {
   if(!addr)
@@ -1540,6 +1599,58 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     _model.state.aux.color.ledOn = on;
     s.print(F("TCS LED "));
     s.println(on ? F("ON") : F("OFF"));
+  }
+#endif
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  else if(strcmp_P(cmd.args[0], PSTR("servo")) == 0)
+  {
+    if(!cmd.args[1])
+    {
+      s.print(F("usage: servo <1000-2000> | servo <pin> <1000-2000> | servo off\r\n"));
+      s.print(F("default pin: "));
+      s.println(ESPFC_DRONE_PROTO_SERVO_PIN);
+      s.print(F("current: "));
+      if(droneProtoServoPin < 0)
+      {
+        s.println(F("off"));
+      }
+      else
+      {
+        s.print(F("pin="));
+        s.print(droneProtoServoPin);
+        s.print(F(" us="));
+        s.println(droneProtoServoUs);
+      }
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("off")) == 0)
+    {
+      droneProtoServoDetach();
+      s.println(F("SERVO OFF"));
+    }
+    else
+    {
+      int pin = ESPFC_DRONE_PROTO_SERVO_PIN;
+      int us = atoi(cmd.args[1]);
+      if(cmd.args[2])
+      {
+        pin = atoi(cmd.args[1]);
+        us = atoi(cmd.args[2]);
+      }
+
+      if(pin < 0 || pin > 48)
+      {
+        s.println(F("SERVO pin invalid"));
+      }
+      else
+      {
+        const uint16_t appliedUs = droneProtoServoClampUs(us);
+        droneProtoServoWrite((uint8_t)pin, appliedUs);
+        s.print(F("SERVO pin="));
+        s.print(pin);
+        s.print(F(" us="));
+        s.println(appliedUs);
+      }
+    }
   }
 #endif
   else if(strcmp_P(cmd.args[0], PSTR("logs")) == 0)

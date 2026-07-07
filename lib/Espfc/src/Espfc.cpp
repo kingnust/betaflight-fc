@@ -239,9 +239,35 @@ void Espfc::forceDroneProtoBenchConfig()
 #endif
   _model.config.featureMask = FEATURE_RX_SERIAL;
   _model.config.input.serialRxProvider = SERIALRX_CRSF;
+  for (size_t i = 0; i < ACTUATOR_CONDITIONS; i++)
+  {
+    _model.config.conditions[i] = ActuatorCondition();
+  }
+  _model.config.conditions[0].id = MODE_ARMED;
+  _model.config.conditions[0].ch = AXIS_AUX_1;
+  _model.config.conditions[0].min = 1700;
+  _model.config.conditions[0].max = 2100;
+  _model.config.conditions[0].logicMode = 0;
+  _model.config.conditions[0].linkId = 0;
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
-#if defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_PWM)
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_DSHOT300)
+  _model.config.output.protocol = ESC_PROTOCOL_DSHOT300;
+  _model.config.output.async = false;
+  _model.config.output.rate = 500;
+  _model.config.output.minCommand = 1000;
+  _model.config.output.minThrottle = 1070;
+  _model.config.output.maxThrottle = 2000;
+  _model.config.output.dshotIdle = 550;
+#elif defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_DSHOT150)
+  _model.config.output.protocol = ESC_PROTOCOL_DSHOT150;
+  _model.config.output.async = false;
+  _model.config.output.rate = 500;
+  _model.config.output.minCommand = 1000;
+  _model.config.output.minThrottle = 1070;
+  _model.config.output.maxThrottle = 2000;
+  _model.config.output.dshotIdle = 800;
+#elif defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_PWM)
   _model.config.output.protocol = ESC_PROTOCOL_PWM;
   _model.config.output.async = true;
   _model.config.output.rate = 50;
