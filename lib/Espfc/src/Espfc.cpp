@@ -277,10 +277,18 @@ void Espfc::forceDroneProtoBenchConfig()
 #else
   _model.config.output.protocol = ESC_PROTOCOL_DISABLED;
 #endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
+  _model.config.output.dshotTelemetry = true;
+#else
   _model.config.output.dshotTelemetry = false;
+#endif
   _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
   _model.config.blackbox.pDenom = 0;
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
+  _model.config.debug.mode = DEBUG_DSHOT_RPM_TELEMETRY;
+#else
   _model.config.debug.mode = DEBUG_GYRO_SCALED;
+#endif
 
   for (int i = 0; i < SERIAL_UART_COUNT; i++)
   {
