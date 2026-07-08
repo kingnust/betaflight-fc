@@ -292,6 +292,11 @@ class Model
       return 1;
     }
 
+    bool configLoadedFromStorage() const
+    {
+      return _storageResult == STORAGE_LOAD_SUCCESS;
+    }
+
     void save()
     {
       preSave();
@@ -603,7 +608,7 @@ class Model
     #ifndef UNIT_TEST
     Utils::Storage _storage;
     #endif
-    StorageResult _storageResult;
+    StorageResult _storageResult = STORAGE_NONE;
 };
 
 }

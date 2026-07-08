@@ -1,6 +1,7 @@
 #include "Espfc.h"
 #include "Hal/Gpio.h"
 #include "Device/DroneProtoServo.hpp"
+#include "DroneProtoProfiles.hpp"
 #include "Debug_Espfc.h"
 
 namespace Espfc {
@@ -130,6 +131,125 @@ int Espfc::updateSerialOnly()
   return 1;
 }
 
+void Espfc::applyDroneProtoTargetConfig()
+{
+#if defined(ESPFC_TARGET_DRONE_PROTO)
+#ifdef ESPFC_INPUT
+  _model.config.pin[PIN_INPUT_RX] = ESPFC_INPUT_PIN;
+#endif
+  _model.config.pin[PIN_OUTPUT_0] = ESPFC_OUTPUT_0;
+  _model.config.pin[PIN_OUTPUT_1] = ESPFC_OUTPUT_1;
+  _model.config.pin[PIN_OUTPUT_2] = ESPFC_OUTPUT_2;
+  _model.config.pin[PIN_OUTPUT_3] = ESPFC_OUTPUT_3;
+  _model.config.pin[PIN_BUTTON] = ESPFC_BUTTON_PIN;
+  _model.config.pin[PIN_BUZZER] = ESPFC_BUZZER_PIN;
+  _model.config.pin[PIN_LED_BLINK] = ESPFC_LED_PIN;
+#ifdef ESPFC_SERIAL_0
+  _model.config.pin[PIN_SERIAL_0_TX] = ESPFC_SERIAL_0_TX;
+  _model.config.pin[PIN_SERIAL_0_RX] = ESPFC_SERIAL_0_RX;
+#endif
+#ifdef ESPFC_SERIAL_1
+  _model.config.pin[PIN_SERIAL_1_TX] = ESPFC_SERIAL_1_TX;
+  _model.config.pin[PIN_SERIAL_1_RX] = ESPFC_SERIAL_1_RX;
+#endif
+#ifdef ESPFC_SERIAL_2
+  _model.config.pin[PIN_SERIAL_2_TX] = ESPFC_SERIAL_2_TX;
+  _model.config.pin[PIN_SERIAL_2_RX] = ESPFC_SERIAL_2_RX;
+#endif
+#ifdef ESPFC_I2C_0
+  _model.config.pin[PIN_I2C_0_SCL] = ESPFC_I2C_0_SCL;
+  _model.config.pin[PIN_I2C_0_SDA] = ESPFC_I2C_0_SDA;
+#endif
+#ifdef ESPFC_SPI_0
+  _model.config.pin[PIN_SPI_0_SCK] = ESPFC_SPI_0_SCK;
+  _model.config.pin[PIN_SPI_0_MOSI] = ESPFC_SPI_0_MOSI;
+  _model.config.pin[PIN_SPI_0_MISO] = ESPFC_SPI_0_MISO;
+  _model.config.pin[PIN_SPI_CS0] = ESPFC_SPI_CS_GYRO;
+  _model.config.pin[PIN_SPI_CS1] = ESPFC_SPI_CS_BARO;
+  _model.config.pin[PIN_SPI_CS2] = -1;
+#endif
+
+  _model.config.gyro.bus = BUS_SPI;
+  _model.config.gyro.dev = GYRO_AUTO;
+  _model.config.gyro.dlpf = GYRO_DLPF_256;
+  _model.config.gyro.align = ALIGN_DEFAULT;
+  _model.config.gyro.filter = FilterConfig(FILTER_PT1, 100);
+  _model.config.gyro.filter2 = FilterConfig(FILTER_PT1, 100);
+  _model.config.gyro.filter3 = FilterConfig(FILTER_NONE, 0);
+  _model.config.gyro.notch1Filter = FilterConfig(FILTER_NOTCH, 0, 0);
+  _model.config.gyro.notch2Filter = FilterConfig(FILTER_NOTCH, 0, 0);
+  _model.config.gyro.dynLpfFilter = FilterConfig(FILTER_PT1, 0, 0);
+  _model.config.gyro.dynamicFilter.count = 0;
+  _model.config.gyro.rpmFilter.harmonics = 0;
+
+  _model.config.accel.bus = BUS_SPI;
+#if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
+  _model.config.accel.dev = GYRO_NONE;
+#else
+  _model.config.accel.dev = GYRO_AUTO;
+#endif
+  _model.config.accel.filter = FilterConfig(FILTER_PT1, 30);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_BMP388)
+  _model.config.baro.bus = BUS_I2C;
+  _model.config.baro.dev = BARO_BMP388;
+#else
+  _model.config.baro.dev = BARO_NONE;
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_BMM150)
+  _model.config.mag.bus = BUS_I2C;
+  _model.config.mag.dev = MAG_BMM150;
+  _model.config.mag.align = ALIGN_DEFAULT;
+#else
+  _model.config.mag.dev = MAG_NONE;
+#endif
+#if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
+  _model.config.fusion.mode = FUSION_NONE;
+#else
+  _model.config.fusion.mode = FUSION_COMPLEMENTARY;
+#endif
+  _model.config.featureMask = FEATURE_RX_SERIAL;
+  _model.config.input.serialRxProvider = SERIALRX_CRSF;
+  _model.config.loopSync = 1;
+  _model.config.mixerSync = 1;
+
+  for (int i = 0; i < SERIAL_UART_COUNT; i++)
+  {
+    _model.config.serial[i].functionMask = SERIAL_FUNCTION_NONE;
+    _model.config.serial[i].baud = SERIAL_SPEED_115200;
+    _model.config.serial[i].blackboxBaud = SERIAL_SPEED_NONE;
+  }
+#ifdef ESPFC_SERIAL_USB
+  _model.config.serial[SERIAL_USB].id = SERIAL_ID_USB_VCP;
+  _model.config.serial[SERIAL_USB].functionMask = SERIAL_FUNCTION_MSP;
+#endif
+#ifdef ESPFC_SERIAL_0
+  _model.config.serial[SERIAL_UART_0].id = SERIAL_ID_UART_1;
+  _model.config.serial[SERIAL_UART_0].functionMask = SERIAL_FUNCTION_MSP;
+  _model.config.serial[SERIAL_UART_0].baud = SERIAL_SPEED_115200;
+#endif
+#ifdef ESPFC_SERIAL_2
+  _model.config.serial[SERIAL_UART_2].id = SERIAL_ID_UART_3;
+  _model.config.serial[SERIAL_UART_2].functionMask = SERIAL_FUNCTION_RX_SERIAL;
+  _model.config.serial[SERIAL_UART_2].baud = SERIAL_SPEED_400000;
+#endif
+#endif
+}
+
+void Espfc::applyDroneProtoStartupConfig()
+{
+#if defined(ESPFC_TARGET_DRONE_PROTO)
+  if (_model.configLoadedFromStorage())
+  {
+    applyDroneProtoTargetConfig();
+    _model.logger.info().logln(F("DRONE PROTO EEPROM CONFIG"));
+    return;
+  }
+
+  forceDroneProtoBenchConfig();
+  _model.logger.info().log(F("DRONE PROTO DEFAULT PROFILE ")).logln(DroneProtoProfiles::name(DroneProtoProfiles::PROFILE_HOVER_SAFE));
+#endif
+}
+
 void Espfc::forceDroneProtoBenchConfig()
 {
 #if defined(ESPFC_TARGET_DRONE_PROTO)
@@ -253,16 +373,7 @@ void Espfc::forceDroneProtoBenchConfig()
 #endif
   _model.config.featureMask = FEATURE_RX_SERIAL;
   _model.config.input.serialRxProvider = SERIALRX_CRSF;
-  for (size_t i = 0; i < ACTUATOR_CONDITIONS; i++)
-  {
-    _model.config.conditions[i] = ActuatorCondition();
-  }
-  _model.config.conditions[0].id = MODE_ARMED;
-  _model.config.conditions[0].ch = AXIS_AUX_1;
-  _model.config.conditions[0].min = 1700;
-  _model.config.conditions[0].max = 2100;
-  _model.config.conditions[0].logicMode = 0;
-  _model.config.conditions[0].linkId = 0;
+  DroneProtoProfiles::apply(_model.config, DroneProtoProfiles::PROFILE_HOVER_SAFE);
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
 #if defined(ESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_DSHOT300)

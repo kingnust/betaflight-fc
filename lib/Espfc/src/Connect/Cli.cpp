@@ -4,6 +4,7 @@
 #include "Hardware.h"
 #include "Device/DroneProtoServo.hpp"
 #include "Device/GyroDevice.h"
+#include "DroneProtoProfiles.hpp"
 #include "Hal/Gpio.h"
 #include "Hal/Pgm.h"
 #include "msp/msp_protocol.h"
@@ -929,7 +930,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     static const char * const helps[] = {
       PSTR("available commands:"),
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
-      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" scaler"), PSTR(" mixer"),
+      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
       //PSTR(" fsinfo"), PSTR(" fsformat"), PSTR(" log"),
@@ -1130,6 +1131,37 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     {
       printGpsStatus(s, true);
     }
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("profile")) == 0)
+  {
+    if(!cmd.args[1] || strcmp_P(cmd.args[1], PSTR("list")) == 0)
+    {
+      s.print(F("current: "));
+      s.println(_model.config.modelName[0] ? _model.config.modelName : "custom");
+      s.println(F("available: bench_safe, hover_safe, acro_test"));
+      s.println(F("usage: profile <name>"));
+      s.println(F("then: save"));
+      return;
+    }
+
+    if(_model.isModeActive(MODE_ARMED))
+    {
+      s.println(F("DISARM FIRST"));
+      return;
+    }
+
+    const DroneProtoProfiles::Profile profile = DroneProtoProfiles::parse(cmd.args[1]);
+    if(!DroneProtoProfiles::apply(_model.config, profile))
+    {
+      s.println(F("unknown profile"));
+      s.println(F("available: bench_safe, hover_safe, acro_test"));
+      return;
+    }
+
+    _model.reload();
+    s.print(F("profile applied: "));
+    s.println(DroneProtoProfiles::name(profile));
+    s.println(F("type save to persist, reboot to verify"));
   }
   else if(strcmp_P(cmd.args[0], PSTR("preset")) == 0)
   {

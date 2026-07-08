@@ -200,7 +200,7 @@ void setup()
 #endif
   espfc.load();
 #if defined(ESPFC_DRONE_PROTO_FORCE_BENCH_CONFIG)
-  espfc.forceDroneProtoBenchConfig();
+  espfc.applyDroneProtoStartupConfig();
 #endif
 #if defined(ESPFC_DRONE_PROTO_ACTIVE_DEBUG)
   activeDebug("after espfc.load, before espfc.begin");

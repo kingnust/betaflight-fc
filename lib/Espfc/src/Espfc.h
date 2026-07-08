@@ -24,6 +24,8 @@ class Espfc
     int update(bool externalTrigger = false);
     int updateOther();
     int updateSerialOnly();
+    void applyDroneProtoTargetConfig();
+    void applyDroneProtoStartupConfig();
     void forceDroneProtoBenchConfig();
 
     int getGyroInterval() const
