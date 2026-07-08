@@ -6,6 +6,15 @@ namespace Espfc::Device {
 
 using namespace Espfc::Rc;
 
+static constexpr uint8_t CRSF_SUBSET_RC_STARTING_CHANNEL_BITS = 5;
+static constexpr uint8_t CRSF_SUBSET_RC_STARTING_CHANNEL_MASK = 0x1F;
+static constexpr uint8_t CRSF_SUBSET_RC_RES_CONFIGURATION_MASK = 0x03;
+
+static inline uint16_t convertSubsetChannel(uint16_t value, uint8_t resolutionConfig)
+{
+  return 988 + (value >> resolutionConfig);
+}
+
 InputCRSF::InputCRSF(): _serial(NULL), _telemetry(NULL), _state(CRSF_ADDR), _idx(0), _new_data(false) {}
 
 int InputCRSF::begin(Device::SerialDevice * serial, TelemetryManager * telemetry)
@@ -91,7 +100,7 @@ void FAST_CODE_ATTR InputCRSF::parse(CrsfMessage& msg, int d)
       }
       break;
     case CRSF_TYPE:
-      if(c == CRSF_FRAMETYPE_RC_CHANNELS_PACKED || c == CRSF_FRAMETYPE_LINK_STATISTICS || c == CRSF_FRAMETYPE_MSP_REQ || c == CRSF_FRAMETYPE_MSP_WRITE)
+      if(c == CRSF_FRAMETYPE_RC_CHANNELS_PACKED || c == CRSF_FRAMETYPE_SUBSET_RC_CHANNELS_PACKED || c == CRSF_FRAMETYPE_LINK_STATISTICS || c == CRSF_FRAMETYPE_MSP_REQ || c == CRSF_FRAMETYPE_MSP_WRITE)
       {
         data[_idx++] = c;
         if (msg.size > 2) {
@@ -135,6 +144,10 @@ void FAST_CODE_ATTR InputCRSF::apply(const CrsfMessage& msg)
       applyChannels(msg);
       break;
 
+    case CRSF_FRAMETYPE_SUBSET_RC_CHANNELS_PACKED:
+      applyChannelsSubset(msg);
+      break;
+
     case CRSF_FRAMETYPE_LINK_STATISTICS:
       applyLinkStats(msg);
       break;
@@ -161,6 +174,50 @@ void FAST_CODE_ATTR InputCRSF::applyChannels(const CrsfMessage& msg)
   const auto * data = reinterpret_cast<const CrsfData*>(msg.payload);
   Crsf::decodeRcDataShift8(_channels, data);
   //Crsf::decodeRcData(_channels, frame);
+  _new_data = true;
+}
+
+void FAST_CODE_ATTR InputCRSF::applyChannelsSubset(const CrsfMessage& msg)
+{
+  // payload: [config][packed channel data...]
+  const size_t payloadSize = msg.size - 2; // size includes type and crc
+  if(payloadSize < 2) return;
+
+  const uint8_t* payload = msg.payload;
+  uint8_t config = payload[0];
+  const uint8_t startChannel = config & CRSF_SUBSET_RC_STARTING_CHANNEL_MASK;
+  config >>= CRSF_SUBSET_RC_STARTING_CHANNEL_BITS;
+
+  const uint8_t resolutionConfig = config & CRSF_SUBSET_RC_RES_CONFIGURATION_MASK; // 0:10b, 1:11b, 2:12b, 3:13b
+  const uint8_t channelBits = 10 + resolutionConfig;
+  const uint16_t channelMask = (1u << channelBits) - 1u;
+
+  const size_t packedBytes = payloadSize - 1;
+  const size_t channelCount = (packedBytes * 8) / channelBits;
+  if(channelCount == 0 || startChannel >= CHANNELS) return;
+
+  const size_t channelsToProcess = std::min(channelCount, CHANNELS - startChannel);
+
+  uint8_t bitsMerged = 0;
+  uint32_t readValue = 0;
+  size_t readByteIndex = 1;
+
+  for(size_t i = 0; i < channelsToProcess; i++)
+  {
+    while(bitsMerged < channelBits && readByteIndex < payloadSize)
+    {
+      readValue |= (static_cast<uint32_t>(payload[readByteIndex++]) << bitsMerged);
+      bitsMerged += 8;
+    }
+
+    if(bitsMerged < channelBits) break;
+
+    const uint16_t channelValue = readValue & channelMask;
+    _channels[startChannel + i] = convertSubsetChannel(channelValue, resolutionConfig);
+    readValue >>= channelBits;
+    bitsMerged -= channelBits;
+  }
+
   _new_data = true;
 }
 

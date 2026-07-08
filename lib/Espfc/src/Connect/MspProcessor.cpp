@@ -1,5 +1,6 @@
 #include "Connect/MspProcessor.hpp"
 #include "Hardware.h"
+#include "Device/DroneProtoServo.hpp"
 #include <platform.h>
 #include <algorithm>
 #include <limits>
@@ -152,6 +153,26 @@ static uint16_t toIbatCurrent(float current)
 }
 
 constexpr uint8_t MSP_PASSTHROUGH_ESC_4WAY = 0xff;
+
+static bool isDroneProtoServoIndex(size_t i)
+{
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  return i == 0 && Espfc::Device::DroneProtoServo::available();
+#else
+  (void)i;
+  return false;
+#endif
+}
+
+static void ensureDroneProtoServoNeutral()
+{
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  if (Espfc::Device::DroneProtoServo::available() && Espfc::Device::DroneProtoServo::currentPin() < 0)
+  {
+    Espfc::Device::DroneProtoServo::writeDefault(Espfc::Device::DroneProtoServo::neutralUs());
+  }
+#endif
+}
 
 }
 
@@ -1364,21 +1385,40 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_SERVO:
-      for(size_t i = 0; i < OUTPUT_CHANNELS; i++)
+      ensureDroneProtoServoNeutral();
+      for(size_t i = 0; i < 8; i++)
       {
-        if (i >= OUTPUT_CHANNELS || _model.config.pin[i + PIN_OUTPUT_0] == -1)
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+        if (isDroneProtoServoIndex(i))
         {
-          r.writeU16(1500);
+          r.writeU16(Device::DroneProtoServo::currentUs());
           continue;
         }
-        r.writeU16(_model.state.output.us[i]);
+#endif
+        if (i < OUTPUT_CHANNELS && _model.config.output.channel[i].servo && _model.config.pin[i + PIN_OUTPUT_0] != -1)
+        {
+          r.writeU16(_model.state.output.us[i]);
+        }
+        else
+        {
+          r.writeU16(1500);
+        }
       }
       break;
 
     case MSP_SERVO_CONFIGURATIONS:
       for(size_t i = 0; i < 8; i++)
       {
-        if(i < OUTPUT_CHANNELS)
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+        if(isDroneProtoServoIndex(i))
+        {
+          r.writeU16(Device::DroneProtoServo::minUs());
+          r.writeU16(Device::DroneProtoServo::maxUs());
+          r.writeU16(Device::DroneProtoServo::neutralUs());
+        }
+        else
+#endif
+        if(i < OUTPUT_CHANNELS && _model.config.output.channel[i].servo)
         {
           r.writeU16(_model.config.output.channel[i].min);
           r.writeU16(_model.config.output.channel[i].max);
@@ -1399,20 +1439,34 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
     case MSP_SET_SERVO_CONFIGURATION:
       {
         uint8_t i = m.readU8();
-        if(i < OUTPUT_CHANNELS)
+        uint16_t minUs = m.readU16();
+        uint16_t maxUs = m.readU16();
+        uint16_t neutralUs = m.readU16();
+        m.readU8();
+        m.readU8();
+        m.readU32();
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+        if(isDroneProtoServoIndex(i))
         {
-          _model.config.output.channel[i].min = m.readU16();
-          _model.config.output.channel[i].max = m.readU16();
-          _model.config.output.channel[i].neutral = m.readU16();
-          m.readU8();
-          m.readU8();
-          m.readU32();
+          Device::DroneProtoServo::setConfig(minUs, maxUs, neutralUs);
+          Device::DroneProtoServo::writeDefault(Device::DroneProtoServo::neutralUs());
         }
         else
+#endif
+        if(i < OUTPUT_CHANNELS && _model.config.output.channel[i].servo)
         {
-          r.result = -1;
+          _model.config.output.channel[i].min = minUs;
+          _model.config.output.channel[i].max = maxUs;
+          _model.config.output.channel[i].neutral = neutralUs;
         }
       }
+      break;
+
+    case MSP_SERVO_MIX_RULES:
+      break;
+
+    case MSP_SET_SERVO_MIX_RULE:
+      while(m.remain()) m.readU8();
       break;
 
     case MSP_ACC_CALIBRATION:

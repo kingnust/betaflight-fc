@@ -1,5 +1,6 @@
 #include "Espfc.h"
 #include "Hal/Gpio.h"
+#include "Device/DroneProtoServo.hpp"
 #include "Debug_Espfc.h"
 
 namespace Espfc {
@@ -31,6 +32,13 @@ int Espfc::begin()
   _model.begin();       // requires _hardware.begin()
   DRONE_PROTO_DEBUG_LINE("after model.begin, before mixer.begin");
   _mixer.begin();
+  #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  #if defined(ESPFC_DRONE_PROTO_SERVO_AUTO_STEP)
+  Device::DroneProtoServo::startStepMode();
+  #else
+  Device::DroneProtoServo::writeDefault(Device::DroneProtoServo::neutralUs());
+  #endif
+  #endif
   DRONE_PROTO_DEBUG_LINE("after mixer.begin, before sensor.begin");
   _sensor.begin();      // requires _hardware.begin()
   DRONE_PROTO_DEBUG_LINE("after sensor.begin, before input.begin");
@@ -102,6 +110,9 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   _serial.update();
   _buzzer.update();
   _model.state.led.update();
+  #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  Device::DroneProtoServo::update();
+  #endif
   _model.state.stats.update();
 
   return 1;
@@ -112,6 +123,9 @@ int Espfc::updateSerialOnly()
   _serial.update();
   _buzzer.update();
   _model.state.led.update();
+  #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
+  Device::DroneProtoServo::update();
+  #endif
   _model.state.stats.update();
   return 1;
 }
@@ -286,6 +300,8 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.blackbox.pDenom = 0;
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
   _model.config.debug.mode = DEBUG_DSHOT_RPM_TELEMETRY;
+#elif defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) && defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+  _model.config.debug.mode = DEBUG_RANGEFINDER;
 #else
   _model.config.debug.mode = DEBUG_GYRO_SCALED;
 #endif

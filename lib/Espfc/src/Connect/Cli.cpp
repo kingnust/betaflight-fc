@@ -2,6 +2,7 @@
 #include <platform.h>
 #include <algorithm>
 #include "Hardware.h"
+#include "Device/DroneProtoServo.hpp"
 #include "Device/GyroDevice.h"
 #include "Hal/Gpio.h"
 #include "Hal/Pgm.h"
@@ -58,65 +59,6 @@ const __FlashStringHelper* rangeStatusName(uint8_t status)
     case 255: return F("waiting");
     default: return F("unknown");
   }
-}
-
-} // namespace
-#endif
-
-#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
-namespace {
-
-static constexpr uint8_t DRONE_PROTO_SERVO_LEDC_CHANNEL = 15;
-static constexpr uint8_t DRONE_PROTO_SERVO_RES_BITS = 16;
-static constexpr uint32_t DRONE_PROTO_SERVO_FREQ_HZ = 50;
-static constexpr uint16_t DRONE_PROTO_SERVO_MIN_US = 1000;
-static constexpr uint16_t DRONE_PROTO_SERVO_MID_US = 1500;
-static constexpr uint16_t DRONE_PROTO_SERVO_MAX_US = 2000;
-static constexpr uint32_t DRONE_PROTO_SERVO_PERIOD_US = 1000000UL / DRONE_PROTO_SERVO_FREQ_HZ;
-
-static int8_t droneProtoServoPin = -1;
-static uint16_t droneProtoServoUs = DRONE_PROTO_SERVO_MID_US;
-
-uint16_t droneProtoServoClampUs(int us)
-{
-  if(us < DRONE_PROTO_SERVO_MIN_US) return DRONE_PROTO_SERVO_MIN_US;
-  if(us > DRONE_PROTO_SERVO_MAX_US) return DRONE_PROTO_SERVO_MAX_US;
-  return us;
-}
-
-uint32_t droneProtoServoDuty(uint16_t us)
-{
-  const uint32_t maxDuty = (1UL << DRONE_PROTO_SERVO_RES_BITS) - 1UL;
-  return ((uint32_t)us * maxDuty + (DRONE_PROTO_SERVO_PERIOD_US / 2)) / DRONE_PROTO_SERVO_PERIOD_US;
-}
-
-void droneProtoServoDetach()
-{
-  if(droneProtoServoPin < 0) return;
-
-  ledcWrite(DRONE_PROTO_SERVO_LEDC_CHANNEL, 0);
-  ledcDetachPin(droneProtoServoPin);
-  Hal::Gpio::pinMode(droneProtoServoPin, OUTPUT);
-  Hal::Gpio::digitalWrite(droneProtoServoPin, LOW);
-  droneProtoServoPin = -1;
-}
-
-void droneProtoServoWrite(uint8_t pin, uint16_t us)
-{
-  if(droneProtoServoPin != -1 && droneProtoServoPin != pin)
-  {
-    droneProtoServoDetach();
-  }
-
-  if(droneProtoServoPin != pin)
-  {
-    ledcSetup(DRONE_PROTO_SERVO_LEDC_CHANNEL, DRONE_PROTO_SERVO_FREQ_HZ, DRONE_PROTO_SERVO_RES_BITS);
-    ledcAttachPin(pin, DRONE_PROTO_SERVO_LEDC_CHANNEL);
-    droneProtoServoPin = pin;
-  }
-
-  droneProtoServoUs = us;
-  ledcWrite(DRONE_PROTO_SERVO_LEDC_CHANNEL, droneProtoServoDuty(us));
 }
 
 } // namespace
@@ -1606,25 +1548,46 @@ void Cli::execute(CliCmd& cmd, Stream& s)
   {
     if(!cmd.args[1])
     {
-      s.print(F("usage: servo <1000-2000> | servo <pin> <1000-2000> | servo off\r\n"));
+      s.print(F("usage: servo <1000-2000> | servo <pin> <1000-2000> | servo step | servo stop | servo off\r\n"));
       s.print(F("default pin: "));
       s.println(ESPFC_DRONE_PROTO_SERVO_PIN);
       s.print(F("current: "));
-      if(droneProtoServoPin < 0)
+      if(Device::DroneProtoServo::currentPin() < 0)
       {
         s.println(F("off"));
       }
       else
       {
         s.print(F("pin="));
-        s.print(droneProtoServoPin);
+        s.print(Device::DroneProtoServo::currentPin());
         s.print(F(" us="));
-        s.println(droneProtoServoUs);
+        s.println(Device::DroneProtoServo::currentUs());
       }
+      s.print(F("step mode: "));
+      s.print(Device::DroneProtoServo::stepModeActive() ? F("on") : F("off"));
+      s.print(F(" running="));
+      s.print(Device::DroneProtoServo::stepRunning() ? 1 : 0);
+      s.print(F(" est="));
+      s.print(Device::DroneProtoServo::estimatedAngleDeg());
+      s.print(F("deg run_ms="));
+      s.println(Device::DroneProtoServo::stepRunMs());
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("step")) == 0)
+    {
+      Device::DroneProtoServo::startStepMode();
+      s.print(F("SERVO STEP pin="));
+      s.print(ESPFC_DRONE_PROTO_SERVO_PIN);
+      s.print(F(" run_ms="));
+      s.println(Device::DroneProtoServo::stepRunMs());
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("stop")) == 0)
+    {
+      Device::DroneProtoServo::stopStepMode();
+      s.println(F("SERVO STOP 1500us"));
     }
     else if(strcmp_P(cmd.args[1], PSTR("off")) == 0)
     {
-      droneProtoServoDetach();
+      Device::DroneProtoServo::detach();
       s.println(F("SERVO OFF"));
     }
     else
@@ -1643,8 +1606,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       }
       else
       {
-        const uint16_t appliedUs = droneProtoServoClampUs(us);
-        droneProtoServoWrite((uint8_t)pin, appliedUs);
+        const uint16_t appliedUs = Device::DroneProtoServo::clampUs(us);
+        Device::DroneProtoServo::write((uint8_t)pin, appliedUs);
         s.print(F("SERVO pin="));
         s.print(pin);
         s.print(F(" us="));

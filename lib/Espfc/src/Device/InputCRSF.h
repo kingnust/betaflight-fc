@@ -39,9 +39,10 @@ class InputCRSF: public InputDevice
     void apply(const Rc::CrsfMessage& msg);
     void applyLinkStats(const Rc::CrsfMessage& msg);
     void applyChannels(const Rc::CrsfMessage& msg);
+    void applyChannelsSubset(const Rc::CrsfMessage& msg);
     void applyMspReq(const Rc::CrsfMessage& msg);
 
-    static constexpr size_t CHANNELS = 16;
+    static constexpr size_t CHANNELS = 32;
     static constexpr size_t TELEMETRY_INTERVAL = 20000;
 
     Device::SerialDevice * _serial;
