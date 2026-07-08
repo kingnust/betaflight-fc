@@ -14,6 +14,9 @@ int Input::begin()
   _model.state.input.frameDelta = FRAME_TIME_DEFAULT_US;
   _model.state.input.frameRate = 1000000ul / _model.state.input.frameDelta;
   _model.state.input.frameCount = 0;
+  _model.state.input.channelsValid = false;
+  _model.state.input.rxLoss = true;
+  _model.state.input.rxFailSafe = false;
   _model.state.input.autoFactor = 1.f / (2.f + _model.config.input.filterAutoFactor * 0.1f);
   switch(_model.config.input.interpolationMode)
   {

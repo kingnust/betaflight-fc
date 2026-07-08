@@ -5,6 +5,15 @@
 
 namespace Espfc::Control {
 
+namespace {
+
+bool isFresh(uint32_t lastUpdate, uint32_t now, uint32_t maxAgeMs)
+{
+  return lastUpdate != 0 && (uint32_t)(now - lastUpdate) <= maxAgeMs;
+}
+
+} // namespace
+
 Actuator::Actuator(Model& model): _model(model) {}
 
 int Actuator::begin()
@@ -90,10 +99,22 @@ void Actuator::updateArmingDisabled()
 {
   int errors = _model.state.i2cErrorDelta;
   _model.state.i2cErrorDelta = 0;
+  const uint32_t now = millis();
+  bool auxSensorFault = false;
+
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+  auxSensorFault = auxSensorFault || !_model.rangefinderActive() || !isFresh(_model.state.aux.range.lastUpdate, now, 2000);
+#endif
+
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+  auxSensorFault = auxSensorFault || !_model.opticalFlowActive() || !isFresh(_model.state.aux.flow.lastUpdate, now, 1000);
+#endif
 
   _model.setArmingDisabled(ARMING_DISABLED_NO_GYRO,        !_model.state.gyro.present || errors);
   _model.setArmingDisabled(ARMING_DISABLED_FAILSAFE,        _model.state.failsafe.phase != FC_FAILSAFE_IDLE);
   _model.setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE,     _model.state.input.rxLoss || _model.state.input.rxFailSafe);
+  _model.setArmingDisabled(ARMING_DISABLED_RX_NO_FRAME,     _model.state.input.frameCount < 5 || !_model.state.input.channelsValid);
+  _model.setArmingDisabled(ARMING_DISABLED_AUX_SENSOR,      auxSensorFault);
   _model.setArmingDisabled(ARMING_DISABLED_THROTTLE,       !_model.isThrottleLow());
   _model.setArmingDisabled(ARMING_DISABLED_CALIBRATING,     _model.calibrationActive());
   _model.setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL,  _model.config.output.protocol == ESC_PROTOCOL_DISABLED);

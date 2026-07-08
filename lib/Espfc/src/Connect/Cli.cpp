@@ -65,6 +65,108 @@ const __FlashStringHelper* rangeStatusName(uint8_t status)
 } // namespace
 #endif
 
+namespace {
+
+bool isFresh(uint32_t lastUpdate, uint32_t now, uint32_t maxAgeMs)
+{
+  return lastUpdate != 0 && (uint32_t)(now - lastUpdate) <= maxAgeMs;
+}
+
+void printAge(Stream& stream, uint32_t lastUpdate, uint32_t now)
+{
+  if(!lastUpdate)
+  {
+    stream.print(F("never"));
+    return;
+  }
+  stream.print((uint32_t)(now - lastUpdate));
+  stream.print(F("ms"));
+}
+
+int32_t blackboxFieldBit(int field)
+{
+  return 1l << field;
+}
+
+int32_t blackboxMaskTune()
+{
+  return blackboxFieldBit(BLACKBOX_FIELD_PID)
+    | blackboxFieldBit(BLACKBOX_FIELD_RC_COMMANDS)
+    | blackboxFieldBit(BLACKBOX_FIELD_SETPOINT)
+    | blackboxFieldBit(BLACKBOX_FIELD_GYRO)
+    | blackboxFieldBit(BLACKBOX_FIELD_GYROUNFILT)
+    | blackboxFieldBit(BLACKBOX_FIELD_MOTOR)
+    | blackboxFieldBit(BLACKBOX_FIELD_DEBUG_LOG)
+    | blackboxFieldBit(BLACKBOX_FIELD_ACC)
+    | blackboxFieldBit(BLACKBOX_FIELD_ALTITUDE)
+    | blackboxFieldBit(BLACKBOX_FIELD_RPM);
+}
+
+int32_t blackboxMaskSensors()
+{
+  return blackboxFieldBit(BLACKBOX_FIELD_GYRO)
+    | blackboxFieldBit(BLACKBOX_FIELD_GYROUNFILT)
+    | blackboxFieldBit(BLACKBOX_FIELD_ACC)
+    | blackboxFieldBit(BLACKBOX_FIELD_MAG)
+    | blackboxFieldBit(BLACKBOX_FIELD_ALTITUDE)
+    | blackboxFieldBit(BLACKBOX_FIELD_DEBUG_LOG);
+}
+
+int32_t blackboxMaskRx()
+{
+  return blackboxFieldBit(BLACKBOX_FIELD_RC_COMMANDS)
+    | blackboxFieldBit(BLACKBOX_FIELD_SETPOINT)
+    | blackboxFieldBit(BLACKBOX_FIELD_RSSI)
+    | blackboxFieldBit(BLACKBOX_FIELD_DEBUG_LOG);
+}
+
+const __FlashStringHelper* blackboxDeviceName(int8_t device)
+{
+  switch(device)
+  {
+    case BLACKBOX_DEV_FLASH: return F("FLASH");
+    case BLACKBOX_DEV_SERIAL: return F("SERIAL");
+    case BLACKBOX_DEV_SDCARD: return F("SD_CARD");
+    case BLACKBOX_DEV_NONE:
+    default:
+      return F("NONE");
+  }
+}
+
+int8_t parseBlackboxDevice(const char* arg, bool& ok)
+{
+  ok = true;
+  if(!arg || strcasecmp_P(arg, PSTR("flash")) == 0)
+  {
+#ifdef USE_FLASHFS
+    return BLACKBOX_DEV_FLASH;
+#else
+    ok = arg == nullptr;
+    return BLACKBOX_DEV_SERIAL;
+#endif
+  }
+  if(strcasecmp_P(arg, PSTR("serial")) == 0)
+  {
+    return BLACKBOX_DEV_SERIAL;
+  }
+  ok = false;
+  return BLACKBOX_DEV_NONE;
+}
+
+void printLogPresetStatus(Model& model, Stream& stream)
+{
+  stream.print(F("blackbox: dev="));
+  stream.print(blackboxDeviceName(model.config.blackbox.dev));
+  stream.print(F(" rate="));
+  stream.print(model.config.blackbox.pDenom);
+  stream.print(F(" mask=0x"));
+  stream.print((uint32_t)model.config.blackbox.fieldsMask, HEX);
+  stream.print(F(" debug="));
+  stream.println(model.config.debug.mode);
+}
+
+} // namespace
+
 void Cli::Param::print(Stream& stream) const
 {
   if(!addr)
@@ -930,7 +1032,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     static const char * const helps[] = {
       PSTR("available commands:"),
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
-      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" scaler"), PSTR(" mixer"),
+      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
+      PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
       //PSTR(" fsinfo"), PSTR(" fsformat"), PSTR(" log"),
@@ -1163,6 +1266,79 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.println(DroneProtoProfiles::name(profile));
     s.println(F("type save to persist, reboot to verify"));
   }
+  else if(strcmp_P(cmd.args[0], PSTR("logpreset")) == 0)
+  {
+    if(!cmd.args[1] || strcmp_P(cmd.args[1], PSTR("status")) == 0)
+    {
+      printLogPresetStatus(_model, s);
+      s.println(F("available: tune, sensors, rx, off"));
+      s.println(F("usage: logpreset <preset> [flash|serial]"));
+      s.println(F("then: save and reboot"));
+      return;
+    }
+
+    if(_model.isModeActive(MODE_ARMED))
+    {
+      s.println(F("DISARM FIRST"));
+      return;
+    }
+
+    if(strcmp_P(cmd.args[1], PSTR("off")) == 0)
+    {
+      _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
+      _model.config.blackbox.pDenom = 0;
+      _model.config.blackbox.fieldsMask = 0;
+      _model.config.debug.mode = DEBUG_NONE;
+      s.println(F("logpreset applied: off"));
+      s.println(F("type save and reboot"));
+      return;
+    }
+
+    bool deviceOk = false;
+    const int8_t device = parseBlackboxDevice(cmd.args[2], deviceOk);
+    if(!deviceOk)
+    {
+      s.println(F("unknown log device"));
+      s.println(F("available devices: flash, serial"));
+      return;
+    }
+
+    _model.config.blackbox.dev = device;
+    _model.config.blackbox.pDenom = 16;
+    _model.config.blackbox.mode = 0;
+
+    if(strcmp_P(cmd.args[1], PSTR("tune")) == 0)
+    {
+      _model.config.blackbox.fieldsMask = blackboxMaskTune();
+      _model.config.debug.mode = DEBUG_PIDLOOP;
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("sensors")) == 0)
+    {
+      _model.config.blackbox.fieldsMask = blackboxMaskSensors();
+      _model.config.debug.mode = DEBUG_RANGEFINDER;
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("rx")) == 0)
+    {
+      _model.config.blackbox.fieldsMask = blackboxMaskRx();
+      _model.config.debug.mode = DEBUG_RX_SIGNAL_LOSS;
+    }
+    else
+    {
+      s.println(F("unknown logpreset"));
+      s.println(F("available: tune, sensors, rx, off"));
+      return;
+    }
+
+    s.print(F("logpreset applied: "));
+    s.print(cmd.args[1]);
+    s.print(F(" dev="));
+    s.println(blackboxDeviceName(_model.config.blackbox.dev));
+    s.println(F("type save and reboot to start logging"));
+    if(_model.config.blackbox.dev == BLACKBOX_DEV_SERIAL)
+    {
+      s.println(F("serial blackbox also needs a SERIAL_FUNCTION_BLACKBOX port"));
+    }
+  }
   else if(strcmp_P(cmd.args[0], PSTR("preset")) == 0)
   {
     if(!cmd.args[1])
@@ -1305,6 +1481,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.println(F("STATUS: "));
     printStats(s);
     s.println();
+    const uint32_t nowMs = millis();
 
     Device::GyroDevice * gyro = _model.state.gyro.dev;
     Device::BaroDevice * baro = _model.state.baro.dev;
@@ -1462,6 +1639,26 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" Hz, "));
     s.println(_model.state.input.autoFactor);
 
+    s.print(F("     prearm: rx_frames="));
+    s.print(_model.state.input.frameCount);
+    s.print(F(" valid="));
+    s.print(_model.state.input.channelsValid ? 1 : 0);
+    s.print(F(" rx_loss="));
+    s.print(_model.state.input.rxLoss ? 1 : 0);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+    s.print(F(" range="));
+    s.print((_model.rangefinderActive() && isFresh(_model.state.aux.range.lastUpdate, nowMs, 2000)) ? F("OK") : F("BAD"));
+    s.print(F(" range_age="));
+    printAge(s, _model.state.aux.range.lastUpdate, nowMs);
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+    s.print(F(" flow="));
+    s.print((_model.opticalFlowActive() && isFresh(_model.state.aux.flow.lastUpdate, nowMs, 1000)) ? F("OK") : F("BAD"));
+    s.print(F(" flow_age="));
+    printAge(s, _model.state.aux.flow.lastUpdate, nowMs);
+#endif
+    s.println();
+
     static const char* armingDisableNames[] = {
       PSTR("NO_GYRO"), PSTR("FAILSAFE"), PSTR("RX_FAILSAFE"), PSTR("BAD_RX_RECOVERY"),
       PSTR("BOXFAILSAFE"), PSTR("RUNAWAY_TAKEOFF"), PSTR("CRASH_DETECTED"), PSTR("THROTTLE"),
@@ -1469,14 +1666,14 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR("CALIBRATING"), PSTR("CLI"), PSTR("CMS_MENU"), PSTR("BST"),
       PSTR("MSP"), PSTR("PARALYZE"), PSTR("GPS"), PSTR("RESC"),
       PSTR("RPMFILTER"), PSTR("REBOOT_REQUIRED"), PSTR("DSHOT_BITBANG"), PSTR("ACC_CALIBRATION"),
-      PSTR("MOTOR_PROTOCOL"), PSTR("ARM_SWITCH")
+      PSTR("MOTOR_PROTOCOL"), PSTR("ARM_SWITCH"), PSTR("RX_NO_FRAME"), PSTR("AUX_SENSOR")
     };
     const size_t armingDisableNamesLength = sizeof(armingDisableNames) / sizeof(armingDisableNames[0]);
 
     s.print(F("   arm flags:"));
     for(size_t i = 0; i < armingDisableNamesLength; i++)
     {
-      if(_model.state.mode.armingDisabledFlags & (1 << i)) {
+      if(_model.state.mode.armingDisabledFlags & (1u << i)) {
         s.print(' ');
         s.print(armingDisableNames[i]);
       }

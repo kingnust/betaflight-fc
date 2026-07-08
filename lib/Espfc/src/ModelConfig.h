@@ -530,10 +530,12 @@ enum ArmingDisabledFlags {
   ARMING_DISABLED_DSHOT_BITBANG   = (1 << 22),
   ARMING_DISABLED_ACC_CALIBRATION = (1 << 23),
   ARMING_DISABLED_MOTOR_PROTOCOL  = (1 << 24),
-  ARMING_DISABLED_ARM_SWITCH      = (1 << 25), // Needs to be the last element, since it's always activated if one of the others is active when arming
+  ARMING_DISABLED_ARM_SWITCH      = (1 << 25), // Always activated if one of the others is active when arming
+  ARMING_DISABLED_RX_NO_FRAME     = (1 << 26),
+  ARMING_DISABLED_AUX_SENSOR      = (1 << 27),
 };
 
-static constexpr size_t ARMING_DISABLED_FLAGS_COUNT = 25;
+static constexpr size_t ARMING_DISABLED_FLAGS_COUNT = 28;
 
 struct WirelessConfig
 {
