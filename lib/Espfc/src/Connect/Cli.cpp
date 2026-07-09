@@ -86,6 +86,27 @@ void printAge(Stream& stream, uint32_t lastUpdate, uint32_t now)
   stream.print(F("ms"));
 }
 
+const __FlashStringHelper* colorTypeName(uint8_t type)
+{
+  switch(type)
+  {
+    case COLOR_SENSOR_DARK: return F("black");
+    case COLOR_SENSOR_WHITE: return F("white");
+    case COLOR_SENSOR_RED: return F("red");
+    case COLOR_SENSOR_GREEN: return F("green");
+    case COLOR_SENSOR_BLUE: return F("blue");
+    case COLOR_SENSOR_YELLOW: return F("yellow");
+    case COLOR_SENSOR_CYAN: return F("cyan");
+    case COLOR_SENSOR_MAGENTA: return F("magenta");
+    case COLOR_SENSOR_ORANGE: return F("orange");
+    case COLOR_SENSOR_PURPLE: return F("purple");
+    case COLOR_SENSOR_BROWN: return F("brown");
+    case COLOR_SENSOR_GREY: return F("grey");
+    case COLOR_SENSOR_UNKNOWN:
+    default: return F("unknown");
+  }
+}
+
 int32_t blackboxFieldBit(int field)
 {
   return 1l << field;
@@ -257,10 +278,57 @@ void printFlowStatus(Model& model, Stream& stream, uint32_t now)
   stream.println();
 }
 
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+void printMtf02pStatus(Model& model, Stream& stream, uint32_t now)
+{
+  stream.print(F("      mtf02p: enabled="));
+  stream.print(model.state.aux.mtf02p.enabled ? 1 : 0);
+  stream.print(F(" present="));
+  stream.print(model.state.aux.mtf02p.present ? 1 : 0);
+  stream.print(F(" packets="));
+  stream.print(model.state.aux.mtf02p.packetCount);
+  stream.print(F(" checksum_err="));
+  stream.print(model.state.aux.mtf02p.checksumErrorCount);
+  stream.print(F(" frame_err="));
+  stream.print(model.state.aux.mtf02p.frameErrorCount);
+  stream.print(F(" dev="));
+  stream.print(model.state.aux.mtf02p.devId);
+  stream.print(F(" sys="));
+  stream.print(model.state.aux.mtf02p.sysId);
+  stream.print(F(" seq="));
+  stream.print(model.state.aux.mtf02p.seq);
+  stream.print(F(" sensor_t="));
+  stream.print(model.state.aux.mtf02p.sensorTimeMs);
+  stream.print(F(" age="));
+  printAge(stream, model.state.aux.mtf02p.lastUpdate, now);
+  stream.println();
+
+  stream.print(F("              range="));
+  stream.print(model.state.aux.range.distanceMm);
+  stream.print(F("mm tof="));
+  stream.print(model.state.aux.mtf02p.tofStatus);
+  stream.print(F(" strength="));
+  stream.print(model.state.aux.mtf02p.strength);
+  stream.print(F(" precision="));
+  stream.print(model.state.aux.mtf02p.precision);
+  stream.print(F(" flow="));
+  stream.print(model.state.aux.flow.deltaX);
+  stream.print('/');
+  stream.print(model.state.aux.flow.deltaY);
+  stream.print(F(" quality="));
+  stream.print(model.state.aux.mtf02p.flowQuality);
+  stream.print(F(" flow_status="));
+  stream.print(model.state.aux.mtf02p.flowStatus);
+  stream.println();
+}
+#endif
+
 void printColorStatus(Model& model, Stream& stream, uint32_t now)
 {
   stream.print(F("       color: present="));
   stream.print(model.colorSensorActive() ? 1 : 0);
+  stream.print(F(" type="));
+  stream.print(colorTypeName(model.state.aux.color.type));
   stream.print(F(" r="));
   stream.print(model.state.aux.color.red);
   stream.print(F(" g="));
@@ -1631,11 +1699,15 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     {
       s.print(F(", GPS"));
     }
-    if(_model.rangefinderActive())
+    if(_model.state.aux.mtf02p.present)
+    {
+      s.print(F(", MTF02P/RANGEFLOW"));
+    }
+    else if(_model.rangefinderActive())
     {
       s.print(F(", VL53L1X/RANGE"));
     }
-    if(_model.opticalFlowActive())
+    if(_model.opticalFlowActive() && !_model.state.aux.mtf02p.present)
     {
       s.print(F(", PMW3901/FLOW"));
     }
@@ -1688,6 +1760,9 @@ void Cli::execute(CliCmd& cmd, Stream& s)
 #if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
       true ||
 #endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+      true ||
+#endif
       _model.rangefinderActive() || _model.opticalFlowActive() || _model.colorSensorActive();
 
     if(auxStatusVisible)
@@ -1695,6 +1770,9 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.print(F("        aux:"));
       if(
 #if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+        true ||
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
         true ||
 #endif
         _model.rangefinderActive())
@@ -1713,9 +1791,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
 #if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
         true ||
 #endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+        true ||
+#endif
         _model.opticalFlowActive())
       {
-        s.print(F(" pmw_id=0x"));
+        s.print(F(" flow_id=0x"));
         s.print(_model.state.aux.flow.chipId, HEX);
         s.print(F("/0x"));
         s.print(_model.state.aux.flow.inverseChipId, HEX);
@@ -1732,6 +1813,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       if(_model.colorSensorActive())
       {
         s.print(F(" color="));
+        s.print(colorTypeName(_model.state.aux.color.type));
+        s.print(':');
         s.print(_model.state.aux.color.red);
         s.print('/');
         s.print(_model.state.aux.color.green);
@@ -1746,6 +1829,10 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     }
 
 #if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+    printFlowStatus(_model, s, nowMs);
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+    printMtf02pStatus(_model, s, nowMs);
     printFlowStatus(_model, s, nowMs);
 #endif
 #if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)
@@ -1797,6 +1884,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print((_model.opticalFlowActive() && isFresh(_model.state.aux.flow.lastUpdate, nowMs, 1000)) ? F("OK") : F("BAD"));
     s.print(F(" flow_age="));
     printAge(s, _model.state.aux.flow.lastUpdate, nowMs);
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+    s.print(F(" mtf="));
+    s.print((_model.state.aux.mtf02p.present && isFresh(_model.state.aux.mtf02p.lastUpdate, nowMs, 1000)) ? F("OK") : F("BAD"));
+    s.print(F(" mtf_age="));
+    printAge(s, _model.state.aux.mtf02p.lastUpdate, nowMs);
 #endif
     s.println();
 
@@ -1974,7 +2067,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.println(F("usage: graph aux"));
     }
   }
-#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
   else if(strcmp_P(cmd.args[0], PSTR("flow")) == 0)
   {
     if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("debug")) == 0)
@@ -1987,6 +2080,21 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.println(F("type save to persist"));
     }
     printFlowStatus(_model, s, millis());
+  }
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  else if(strcmp_P(cmd.args[0], PSTR("mtf02p")) == 0 || strcmp_P(cmd.args[0], PSTR("mtf")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("debug")) == 0)
+    {
+      _model.config.debug.mode = DEBUG_RANGEFINDER_QUALITY;
+      s.println(F("debug_mode=OPTICALFLOW aux graph"));
+      s.println(F("debug[0]=flow_dx debug[1]=flow_dy"));
+      s.println(F("debug[2..5]=red,green,blue,clear"));
+      s.println(F("debug[6]=range_mm debug[7]=range_status"));
+      s.println(F("type save to persist"));
+    }
+    printMtf02pStatus(_model, s, millis());
   }
 #endif
 #if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)

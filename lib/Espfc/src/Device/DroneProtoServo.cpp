@@ -13,8 +13,8 @@ namespace DroneProtoServo {
 
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
 
-static constexpr uint8_t LEDC_CHANNEL = 15;
-static constexpr uint8_t RES_BITS = 16;
+static constexpr uint8_t LEDC_CHANNEL = 7;
+static constexpr uint8_t RES_BITS = 14;
 static constexpr uint32_t FREQ_HZ = 50;
 static constexpr uint32_t PERIOD_US = 1000000UL / FREQ_HZ;
 static constexpr uint16_t SAFE_MIN_US = 500;

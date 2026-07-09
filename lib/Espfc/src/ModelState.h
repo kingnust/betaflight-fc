@@ -499,14 +499,51 @@ struct OpticalFlowState
   uint32_t lastUpdate = 0;
 };
 
+enum ColorSensorType : uint8_t
+{
+  COLOR_SENSOR_UNKNOWN = 0,
+  COLOR_SENSOR_DARK,
+  COLOR_SENSOR_WHITE,
+  COLOR_SENSOR_RED,
+  COLOR_SENSOR_GREEN,
+  COLOR_SENSOR_BLUE,
+  COLOR_SENSOR_YELLOW,
+  COLOR_SENSOR_CYAN,
+  COLOR_SENSOR_MAGENTA,
+  COLOR_SENSOR_ORANGE,
+  COLOR_SENSOR_PURPLE,
+  COLOR_SENSOR_BROWN,
+  COLOR_SENSOR_GREY,
+};
+
 struct ColorSensorState
 {
   bool present = false;
   bool ledOn = false;
+  uint8_t type = COLOR_SENSOR_UNKNOWN;
   uint16_t red = 0;
   uint16_t green = 0;
   uint16_t blue = 0;
   uint16_t clear = 0;
+  uint32_t lastUpdate = 0;
+};
+
+struct Mtf02pState
+{
+  bool enabled = false;
+  bool present = false;
+  uint8_t devId = 0;
+  uint8_t sysId = 0;
+  uint8_t seq = 0;
+  uint8_t strength = 0;
+  uint8_t precision = 0;
+  uint8_t tofStatus = 255;
+  uint8_t flowQuality = 0;
+  uint8_t flowStatus = 255;
+  uint32_t sensorTimeMs = 0;
+  uint32_t packetCount = 0;
+  uint32_t checksumErrorCount = 0;
+  uint32_t frameErrorCount = 0;
   uint32_t lastUpdate = 0;
 };
 
@@ -515,6 +552,7 @@ struct AuxSensorState
   RangefinderState range;
   OpticalFlowState flow;
   ColorSensorState color;
+  Mtf02pState mtf02p;
 };
 
 // runtime data

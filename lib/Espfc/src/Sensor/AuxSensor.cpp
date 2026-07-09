@@ -21,6 +21,31 @@ constexpr uint32_t PMW3901_BOOT_DELAY_MS = 1000;
 constexpr uint32_t PMW3901_RETRY_MS = 2000;
 #endif
 
+#if defined(ESPFC_DRONE_PROTO_AUX_MTF02P)
+constexpr uint8_t MTF02P_FRAME_HEAD = 0xEF;
+constexpr uint8_t MTF02P_MSG_ID_RANGE_SENSOR = 0x51;
+constexpr uint8_t MTF02P_HEADER_LEN = 6;
+constexpr uint8_t MTF02P_MAX_PAYLOAD_LEN = 64;
+constexpr uint8_t MTF02P_RANGE_PAYLOAD_LEN = 20;
+constexpr uint32_t MTF02P_STALE_MS = 1000;
+constexpr size_t MTF02P_MAX_BYTES_PER_UPDATE = 160;
+
+uint16_t readU16Le(const uint8_t* data)
+{
+  return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+}
+
+int16_t readI16Le(const uint8_t* data)
+{
+  return (int16_t)readU16Le(data);
+}
+
+uint32_t readU32Le(const uint8_t* data)
+{
+  return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+#endif
+
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
 TwoWire& rangefinderWire()
 {
@@ -91,6 +116,114 @@ int16_t debugClamp(uint32_t value)
 } // namespace
 #endif
 
+#if defined(ESPFC_DRONE_PROTO_AUX_TCS34725)
+namespace {
+
+uint8_t classifyColor(const Espfc::Device::ColorTCS34725Data& color)
+{
+  const uint32_t rawTotal = (uint32_t)color.red + color.green + color.blue;
+  if (color.clear < 90 || rawTotal < 160)
+  {
+    return Espfc::COLOR_SENSOR_DARK;
+  }
+
+  // Rough white balance for the TCS34725 + onboard LED. Without this, green
+  // tends to dominate and blue/purple are hard to reach.
+  const uint32_t r = (uint32_t)color.red * 100u;
+  const uint32_t g = (uint32_t)color.green * 82u;
+  const uint32_t b = (uint32_t)color.blue * 135u;
+
+  uint32_t maxValue = r;
+  if (g > maxValue) maxValue = g;
+  if (b > maxValue) maxValue = b;
+  uint32_t minValue = r;
+  if (g < minValue) minValue = g;
+  if (b < minValue) minValue = b;
+  if (maxValue == 0)
+  {
+    return Espfc::COLOR_SENSOR_DARK;
+  }
+
+  const uint32_t chroma = maxValue - minValue;
+  const uint32_t satPct = (chroma * 100u) / maxValue;
+
+  if (satPct < 24u)
+  {
+    if (color.clear > 2200 || rawTotal > 2600)
+    {
+      return Espfc::COLOR_SENSOR_WHITE;
+    }
+    return Espfc::COLOR_SENSOR_GREY;
+  }
+
+  int32_t hue = 0;
+  if (r >= g && r >= b)
+  {
+    hue = (int32_t)(60l * ((int32_t)g - (int32_t)b) / (int32_t)chroma);
+    if (hue < 0) hue += 360;
+  }
+  else if (g >= r && g >= b)
+  {
+    hue = 120 + (int32_t)(60l * ((int32_t)b - (int32_t)r) / (int32_t)chroma);
+  }
+  else
+  {
+    hue = 240 + (int32_t)(60l * ((int32_t)r - (int32_t)g) / (int32_t)chroma);
+  }
+  if (hue < 0) hue += 360;
+  if (hue >= 360) hue -= 360;
+
+  if (hue < 12 || hue >= 345) return Espfc::COLOR_SENSOR_RED;
+  if (hue < 28)
+  {
+    return color.clear < 1700 ? Espfc::COLOR_SENSOR_BROWN : Espfc::COLOR_SENSOR_ORANGE;
+  }
+  if (hue < 52)
+  {
+    return color.clear < 1500 ? Espfc::COLOR_SENSOR_BROWN : Espfc::COLOR_SENSOR_ORANGE;
+  }
+  if (hue < 76) return Espfc::COLOR_SENSOR_YELLOW;
+  if (hue < 165) return Espfc::COLOR_SENSOR_GREEN;
+  if (hue < 205) return Espfc::COLOR_SENSOR_CYAN;
+  if (hue < 255) return Espfc::COLOR_SENSOR_BLUE;
+  if (hue < 305) return Espfc::COLOR_SENSOR_PURPLE;
+  if (hue < 345) return Espfc::COLOR_SENSOR_MAGENTA;
+  return Espfc::COLOR_SENSOR_UNKNOWN;
+}
+
+const __FlashStringHelper* colorTypeName(uint8_t type)
+{
+  switch(type)
+  {
+    case Espfc::COLOR_SENSOR_DARK: return F("black");
+    case Espfc::COLOR_SENSOR_WHITE: return F("white");
+    case Espfc::COLOR_SENSOR_RED: return F("red");
+    case Espfc::COLOR_SENSOR_GREEN: return F("green");
+    case Espfc::COLOR_SENSOR_BLUE: return F("blue");
+    case Espfc::COLOR_SENSOR_YELLOW: return F("yellow");
+    case Espfc::COLOR_SENSOR_CYAN: return F("cyan");
+    case Espfc::COLOR_SENSOR_MAGENTA: return F("magenta");
+    case Espfc::COLOR_SENSOR_ORANGE: return F("orange");
+    case Espfc::COLOR_SENSOR_PURPLE: return F("purple");
+    case Espfc::COLOR_SENSOR_BROWN: return F("brown");
+    case Espfc::COLOR_SENSOR_GREY: return F("grey");
+    case Espfc::COLOR_SENSOR_UNKNOWN:
+    default: return F("unknown");
+  }
+}
+
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+void printColorSensorStatus(const __FlashStringHelper* status)
+{
+  Serial.print(F("COLOR sensor="));
+  Serial.println(status);
+  Serial.flush();
+}
+#endif
+
+} // namespace
+#endif
+
 namespace Espfc::Sensor {
 
 AuxSensor::AuxSensor(Model& model): _model(model) {}
@@ -111,6 +244,185 @@ bool AuxSensor::beginOpticalFlow(uint32_t now)
     return _model.state.aux.flow.present;
   }
   return false;
+}
+#endif
+
+#if defined(ESPFC_DRONE_PROTO_AUX_MTF02P)
+void AuxSensor::resetMtf02pParser()
+{
+  _mtf02pFrameIndex = 0;
+  _mtf02pFrameLength = 0;
+  _mtf02pChecksum = 0;
+}
+
+bool AuxSensor::beginMtf02p(uint32_t now)
+{
+  (void)now;
+  resetMtf02pParser();
+  _model.state.aux.mtf02p.enabled = true;
+  _model.state.aux.mtf02p.present = false;
+  _model.state.aux.range.present = false;
+  _model.state.aux.range.status = 255;
+  _model.state.aux.flow.present = false;
+  _model.state.aux.flow.chipId = 0x02;
+  _model.state.aux.flow.inverseChipId = 0xFD;
+  ESPFC_MTF02P_DEV.begin(ESPFC_MTF02P_BAUD, SERIAL_8N1, ESPFC_MTF02P_RX, ESPFC_MTF02P_TX);
+  _mtf02pStarted = true;
+  _model.logger.info().log(F("AUX MTF02P UART")).log(ESPFC_MTF02P_BAUD).log(F(" rx=")).log(ESPFC_MTF02P_RX).log(F(" tx=")).logln(ESPFC_MTF02P_TX);
+  return true;
+}
+
+bool AuxSensor::handleMtf02pFrame(uint32_t now)
+{
+  const uint8_t msgId = _mtf02pFrame[3];
+  const uint8_t payloadLen = _mtf02pFrame[5];
+
+  if (msgId != MTF02P_MSG_ID_RANGE_SENSOR)
+  {
+    return false;
+  }
+  if (payloadLen < MTF02P_RANGE_PAYLOAD_LEN)
+  {
+    _model.state.aux.mtf02p.frameErrorCount++;
+    return false;
+  }
+
+  const uint8_t* payload = &_mtf02pFrame[MTF02P_HEADER_LEN];
+  const uint32_t sensorTimeMs = readU32Le(&payload[0]);
+  const uint32_t distanceMmRaw = readU32Le(&payload[4]);
+  const uint8_t strength = payload[8];
+  const uint8_t precision = payload[9];
+  const uint8_t tofStatus = payload[10];
+  const int16_t flowVelX = readI16Le(&payload[12]);
+  const int16_t flowVelY = readI16Le(&payload[14]);
+  const uint8_t flowQuality = payload[16];
+  const uint8_t flowStatus = payload[17];
+
+  _model.state.aux.mtf02p.present = true;
+  _model.state.aux.mtf02p.devId = _mtf02pFrame[1];
+  _model.state.aux.mtf02p.sysId = _mtf02pFrame[2];
+  _model.state.aux.mtf02p.seq = _mtf02pFrame[4];
+  _model.state.aux.mtf02p.strength = strength;
+  _model.state.aux.mtf02p.precision = precision;
+  _model.state.aux.mtf02p.tofStatus = tofStatus;
+  _model.state.aux.mtf02p.flowQuality = flowQuality;
+  _model.state.aux.mtf02p.flowStatus = flowStatus;
+  _model.state.aux.mtf02p.sensorTimeMs = sensorTimeMs;
+  _model.state.aux.mtf02p.packetCount++;
+  _model.state.aux.mtf02p.lastUpdate = now;
+
+  _model.state.aux.range.present = true;
+  _model.state.aux.range.distanceMm = distanceMmRaw > 65535u ? 65535u : (uint16_t)distanceMmRaw;
+  _model.state.aux.range.status = tofStatus;
+  _model.state.aux.range.signal = strength;
+  _model.state.aux.range.ambient = precision;
+  _model.state.aux.range.lastUpdate = now;
+  _model.state.aux.range.readCount++;
+
+  _model.state.aux.flow.present = true;
+  _model.state.aux.flow.deltaX = flowVelX;
+  _model.state.aux.flow.deltaY = flowVelY;
+  _model.state.aux.flow.frameCount++;
+  _model.state.aux.flow.lastUpdate = now;
+
+  if (_model.config.debug.mode == DEBUG_RANGEFINDER || _model.config.debug.mode == DEBUG_LIDAR_TF)
+  {
+    _model.state.debug[0] = _model.state.aux.range.distanceMm;
+    _model.state.debug[1] = _model.state.aux.range.status;
+    _model.state.debug[2] = flowVelX;
+    _model.state.debug[3] = flowVelY;
+  }
+  if (_model.config.debug.mode == DEBUG_RANGEFINDER_QUALITY)
+  {
+    _model.state.debug[0] = flowVelX;
+    _model.state.debug[1] = flowVelY;
+    _model.state.debug[6] = _model.state.aux.range.distanceMm;
+    _model.state.debug[7] = _model.state.aux.range.status;
+  }
+
+  return true;
+}
+
+bool AuxSensor::parseMtf02pByte(uint8_t value, uint32_t now)
+{
+  if (_mtf02pFrameIndex == 0)
+  {
+    if (value != MTF02P_FRAME_HEAD)
+    {
+      return false;
+    }
+    _mtf02pFrame[0] = value;
+    _mtf02pChecksum = value;
+    _mtf02pFrameIndex = 1;
+    return false;
+  }
+
+  if (_mtf02pFrameIndex < MTF02P_HEADER_LEN)
+  {
+    _mtf02pFrame[_mtf02pFrameIndex] = value;
+    _mtf02pChecksum += value;
+    _mtf02pFrameIndex++;
+    if (_mtf02pFrameIndex == MTF02P_HEADER_LEN)
+    {
+      _mtf02pFrameLength = _mtf02pFrame[5];
+      if (_mtf02pFrameLength > MTF02P_MAX_PAYLOAD_LEN)
+      {
+        _model.state.aux.mtf02p.frameErrorCount++;
+        resetMtf02pParser();
+      }
+    }
+    return false;
+  }
+
+  const uint8_t checksumIndex = MTF02P_HEADER_LEN + _mtf02pFrameLength;
+  if (_mtf02pFrameIndex < checksumIndex)
+  {
+    _mtf02pFrame[_mtf02pFrameIndex] = value;
+    _mtf02pChecksum += value;
+    _mtf02pFrameIndex++;
+    return false;
+  }
+
+  const bool checksumOk = _mtf02pChecksum == value;
+  bool handled = false;
+  if (checksumOk)
+  {
+    handled = handleMtf02pFrame(now);
+  }
+  else
+  {
+    _model.state.aux.mtf02p.checksumErrorCount++;
+  }
+  resetMtf02pParser();
+  return handled;
+}
+
+bool AuxSensor::updateMtf02p(uint32_t now)
+{
+  if (!_mtf02pStarted)
+  {
+    beginMtf02p(now);
+  }
+
+  bool updated = false;
+  size_t bytesRead = 0;
+  while (ESPFC_MTF02P_DEV.available() > 0 && bytesRead < MTF02P_MAX_BYTES_PER_UPDATE)
+  {
+    updated = parseMtf02pByte((uint8_t)ESPFC_MTF02P_DEV.read(), now) || updated;
+    bytesRead++;
+  }
+
+  if (_model.state.aux.mtf02p.present && (uint32_t)(now - _model.state.aux.mtf02p.lastUpdate) > MTF02P_STALE_MS)
+  {
+    _model.state.aux.mtf02p.present = false;
+    _model.state.aux.range.present = false;
+    _model.state.aux.range.status = 240;
+    _model.state.aux.range.lastError = 240;
+    _model.state.aux.range.lastErrorMs = now;
+    _model.state.aux.flow.present = false;
+  }
+
+  return updated;
 }
 #endif
 
@@ -335,6 +647,10 @@ void AuxSensor::rangefinderTask()
 int AuxSensor::begin()
 {
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
+#if defined(ESPFC_DRONE_PROTO_AUX_MTF02P)
+  beginMtf02p(millis());
+#endif
+
 #if defined(ESPFC_DRONE_PROTO_AUX_PMW3901) && defined(ESPFC_SPI_0)
   _model.state.aux.flow.present = false;
   _model.state.aux.flow.chipId = 0;
@@ -348,7 +664,16 @@ int AuxSensor::begin()
     _model.state.aux.color.present = _color.begin(i2c, ESPFC_TCS_LED_PIN);
     _model.state.aux.color.ledOn = _model.state.aux.color.present;
     _model.logger.info().log(F("AUX TCS34725")).logln(_model.state.aux.color.present ? "Y" : "");
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+    printColorSensorStatus(_model.state.aux.color.present ? F("present") : F("missing"));
+#endif
   }
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+  else
+  {
+    printColorSensorStatus(F("i2c-missing"));
+  }
+#endif
 #endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
@@ -379,10 +704,17 @@ int AuxSensor::begin()
 int AuxSensor::update()
 {
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
-#if defined(ESPFC_DRONE_PROTO_AUX_PMW3901) || defined(ESPFC_DRONE_PROTO_AUX_TCS34725)
+#if defined(ESPFC_DRONE_PROTO_AUX_PMW3901) || defined(ESPFC_DRONE_PROTO_AUX_MTF02P) || defined(ESPFC_DRONE_PROTO_AUX_TCS34725)
   const uint32_t now = millis();
 #endif
   int updated = 0;
+
+#if defined(ESPFC_DRONE_PROTO_AUX_MTF02P)
+  if (updateMtf02p(now))
+  {
+    updated = 1;
+  }
+#endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_PMW3901)
   if (!_model.state.aux.flow.present && now >= _lastFlowInitMs)
@@ -412,7 +744,17 @@ int AuxSensor::update()
 #endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_TCS34725)
-  if (_model.state.aux.color.present && now - _lastColorMs >= 700)
+  if (!_model.state.aux.color.present)
+  {
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+    if (now - _lastColorPrintMs >= 1000)
+    {
+      _lastColorPrintMs = now;
+      printColorSensorStatus(F("missing"));
+    }
+#endif
+  }
+  else if (now - _lastColorMs >= 700)
   {
     _lastColorMs = now;
     Device::ColorTCS34725Data color;
@@ -422,6 +764,7 @@ int AuxSensor::update()
       _model.state.aux.color.red = color.red;
       _model.state.aux.color.green = color.green;
       _model.state.aux.color.blue = color.blue;
+      _model.state.aux.color.type = classifyColor(color);
       _model.state.aux.color.lastUpdate = now;
       if (_model.config.debug.mode == DEBUG_ADC_INTERNAL)
       {
@@ -430,8 +773,32 @@ int AuxSensor::update()
         _model.state.debug[2] = debugClamp(color.blue);
         _model.state.debug[3] = debugClamp(color.clear);
       }
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+      if (now - _lastColorPrintMs >= 1000)
+      {
+        _lastColorPrintMs = now;
+        Serial.print(F("COLOR "));
+        Serial.print(colorTypeName(_model.state.aux.color.type));
+        Serial.print(F(" r="));
+        Serial.print(_model.state.aux.color.red);
+        Serial.print(F(" g="));
+        Serial.print(_model.state.aux.color.green);
+        Serial.print(F(" b="));
+        Serial.print(_model.state.aux.color.blue);
+        Serial.print(F(" clear="));
+        Serial.println(_model.state.aux.color.clear);
+        Serial.flush();
+      }
+#endif
       updated = 1;
     }
+#if defined(ESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT)
+    else if (now - _lastColorPrintMs >= 1000)
+    {
+      _lastColorPrintMs = now;
+      printColorSensorStatus(F("waiting"));
+    }
+#endif
   }
 #endif
 

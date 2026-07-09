@@ -200,6 +200,45 @@ static uint16_t debugU16(int32_t value)
   return (uint16_t)std::clamp<int32_t>(value, -32768, 32767);
 }
 
+static constexpr uint8_t BF_SENSOR_HARDWARE_NONE = 0;
+static constexpr uint8_t BF_SONAR_HARDWARE_MTF02P = 7;
+static constexpr uint8_t BF_OPTICAL_FLOW_HARDWARE_MT = 1;
+
+static uint16_t activeSensorMask(const Espfc::Model& model)
+{
+  uint16_t mask = 0;
+  if(model.accelActive())       mask |= 1 << 0;
+  if(model.baroActive())        mask |= 1 << 1;
+  if(model.magActive())         mask |= 1 << 2;
+  if(model.gpsActive())         mask |= 1 << 3;
+  if(model.rangefinderActive()) mask |= 1 << 4;
+  if(model.gyroActive())        mask |= 1 << 5;
+  if(model.opticalFlowActive()) mask |= 1 << 6;
+  return mask;
+}
+
+static uint8_t sonarHardwareId(const Espfc::Model& model)
+{
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  (void)model;
+  return BF_SONAR_HARDWARE_MTF02P;
+#else
+  (void)model;
+  return BF_SENSOR_HARDWARE_NONE;
+#endif
+}
+
+static uint8_t opticalFlowHardwareId(const Espfc::Model& model)
+{
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  (void)model;
+  return BF_OPTICAL_FLOW_HARDWARE_MT;
+#else
+  (void)model;
+  return BF_SENSOR_HARDWARE_NONE;
+#endif
+}
+
 }
 
 namespace Espfc {
@@ -287,8 +326,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       //r.writeU16(_model.state.loopTimer.delta);
       r.writeU16(_model.state.stats.loopTime());
       r.writeU16(_model.state.i2cErrorCount); // i2c error count
-      //         acc,     baro,    mag,     gps,     sonar/range,              gyro
-      r.writeU16(_model.accelActive() | _model.baroActive() << 1 | _model.magActive() << 2 | _model.gpsActive() << 3 | _model.rangefinderActive() << 4 | _model.gyroActive() << 5);
+      r.writeU16(activeSensorMask(_model));
       r.writeU32(_model.state.mode.mask); // flight mode flags
       r.writeU8(0); // pid profile
       r.writeU16(lrintf(_model.state.stats.getCpuLoad()));
@@ -575,12 +613,16 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU8(_model.config.accel.dev); // 3 acc mpu6050
       r.writeU8(_model.config.baro.dev);  // 2 baro bmp085
       r.writeU8(_model.config.mag.dev);   // 3 mag hmc5883l
+      r.writeU8(sonarHardwareId(_model)); // API 1.46: sonar/rangefinder hardware
+      r.writeU8(opticalFlowHardwareId(_model)); // API 1.47: optical flow hardware
       break;
 
     case MSP_SET_SENSOR_CONFIG:
       _model.config.accel.dev = m.readU8(); // 3 acc mpu6050
       _model.config.baro.dev = m.readU8();  // 2 baro bmp085
       _model.config.mag.dev = m.readU8();   // 3 mag hmc5883l
+      if(m.remain() > 0) m.readU8(); // API 1.46 sonar hardware, detected automatically here
+      if(m.remain() > 0) m.readU8(); // API 1.47 optical flow hardware, detected automatically here
       _model.reload();
       break;
 

@@ -110,6 +110,12 @@ void Actuator::updateArmingDisabled()
   auxSensorFault = auxSensorFault || !_model.opticalFlowActive() || !isFresh(_model.state.aux.flow.lastUpdate, now, 1000);
 #endif
 
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  auxSensorFault = auxSensorFault || !_model.state.aux.mtf02p.present || !isFresh(_model.state.aux.mtf02p.lastUpdate, now, 1000);
+  auxSensorFault = auxSensorFault || !_model.rangefinderActive() || !isFresh(_model.state.aux.range.lastUpdate, now, 1000);
+  auxSensorFault = auxSensorFault || !_model.opticalFlowActive() || !isFresh(_model.state.aux.flow.lastUpdate, now, 1000);
+#endif
+
   _model.setArmingDisabled(ARMING_DISABLED_NO_GYRO,        !_model.state.gyro.present || errors);
   _model.setArmingDisabled(ARMING_DISABLED_FAILSAFE,        _model.state.failsafe.phase != FC_FAILSAFE_IDLE);
   _model.setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE,     _model.state.input.rxLoss || _model.state.input.rxFailSafe);
