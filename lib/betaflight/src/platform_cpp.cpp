@@ -143,6 +143,7 @@ static EscDriver * escDriver;
 void motorInitEscDevice(void * driver)
 {
     escDriver = static_cast<EscDriver *>(driver);
+    _motorCount = 0;
     memset(&motors, 0, sizeof(pwmOutputPort_t));
     if(!driver) return;
 

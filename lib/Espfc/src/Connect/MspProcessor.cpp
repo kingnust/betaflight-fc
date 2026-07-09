@@ -174,6 +174,32 @@ static void ensureDroneProtoServoNeutral()
 #endif
 }
 
+static uint8_t activeMotorOutputCount(const Espfc::Model& model)
+{
+  uint8_t count = 0;
+  const size_t limit = std::min((size_t)Espfc::OUTPUT_CHANNELS, (size_t)model.state.currentMixer.count);
+  for(size_t i = 0; i < limit; i++)
+  {
+    if(model.config.output.channel[i].servo) continue;
+    if(model.config.pin[Espfc::PIN_OUTPUT_0 + i] == -1) continue;
+    count++;
+  }
+  return count;
+}
+
+static bool isActiveMotorOutput(const Espfc::Model& model, size_t i)
+{
+  if(i >= Espfc::OUTPUT_CHANNELS) return false;
+  if(i >= model.state.currentMixer.count) return false;
+  if(model.config.output.channel[i].servo) return false;
+  return model.config.pin[Espfc::PIN_OUTPUT_0 + i] != -1;
+}
+
+static uint16_t debugU16(int32_t value)
+{
+  return (uint16_t)std::clamp<int32_t>(value, -32768, 32767);
+}
+
 }
 
 namespace Espfc {
@@ -782,7 +808,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU16(_model.config.output.minThrottle); // minthrottle
       r.writeU16(_model.config.output.maxThrottle); // maxthrottle
       r.writeU16(_model.config.output.minCommand);  // mincommand
-      r.writeU8(_model.state.currentMixer.count);   // motor count
+      r.writeU8(activeMotorOutputCount(_model));     // motor count
       // 1.42+
       r.writeU8(_model.config.output.motorPoles); // motor pole count
       r.writeU8(_model.config.output.dshotTelemetry); // dshot telemtery
@@ -1333,20 +1359,19 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_MOTOR:
-      for (size_t i = 0; i < 8; i++)
+      for (size_t i = 0; i < OUTPUT_CHANNELS; i++)
       {
-        if (i >= OUTPUT_CHANNELS || _model.config.pin[i + PIN_OUTPUT_0] == -1)
-        {
-          r.writeU16(0);
-          continue;
-        }
+        if (!isActiveMotorOutput(_model, i)) continue;
         r.writeU16(_model.state.output.us[i]);
       }
       break;
 
     case MSP_MOTOR_TELEMETRY:
-      r.writeU8(OUTPUT_CHANNELS);
-      for (size_t i = 0; i < OUTPUT_CHANNELS; i++)
+    {
+      const uint8_t motorCount = activeMotorOutputCount(_model);
+      uint8_t written = 0;
+      r.writeU8(motorCount);
+      for (size_t i = 0; i < OUTPUT_CHANNELS && written < motorCount; i++)
       {
         int rpm = 0;
         uint16_t invalidPct = 0;
@@ -1355,6 +1380,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         uint16_t escCurrent = 0;     // 0.01A per unit
         uint16_t escConsumption = 0; // mAh
 
+        if (_model.config.output.channel[i].servo) continue;
         if (_model.config.pin[i + PIN_OUTPUT_0] != -1)
         {
           rpm = lrintf(_model.state.output.telemetry.rpm[i]);
@@ -1370,8 +1396,10 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         r.writeU16(escVoltage);
         r.writeU16(escCurrent);
         r.writeU16(escConsumption);
+        written++;
       }
       break;
+    }
 
     case MSP_SET_MOTOR:
       if(_model.isFeatureActive(FEATURE_GPS) && _model.config.blackbox.mode > 0)
@@ -1380,7 +1408,13 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       }
       for(size_t i = 0; i < OUTPUT_CHANNELS; i++)
       {
+        if(!isActiveMotorOutput(_model, i)) continue;
+        if(m.remain() < 2) break;
         _model.state.output.disarmed[i] = m.readU16();
+      }
+      while(m.remain() >= 2)
+      {
+        m.readU16();
       }
       break;
 
@@ -1581,8 +1615,30 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_DEBUG:
-      for (int i = 0; i < 8; i++) {
-        r.writeU16(_model.state.debug[i]);
+      if(_model.config.debug.mode == DEBUG_RANGEFINDER || _model.config.debug.mode == DEBUG_RANGEFINDER_QUALITY || _model.config.debug.mode == DEBUG_LIDAR_TF)
+      {
+        r.writeU16(debugU16(_model.state.aux.flow.deltaX));
+        r.writeU16(debugU16(_model.state.aux.flow.deltaY));
+        r.writeU16(debugU16(_model.state.aux.color.red));
+        r.writeU16(debugU16(_model.state.aux.color.green));
+        r.writeU16(debugU16(_model.state.aux.color.blue));
+        r.writeU16(debugU16(_model.state.aux.color.clear));
+        r.writeU16(debugU16(_model.state.aux.range.distanceMm));
+        r.writeU16(debugU16(_model.state.aux.range.status));
+      }
+      else if(_model.config.debug.mode == DEBUG_ADC_INTERNAL)
+      {
+        r.writeU16(debugU16(_model.state.aux.color.red));
+        r.writeU16(debugU16(_model.state.aux.color.green));
+        r.writeU16(debugU16(_model.state.aux.color.blue));
+        r.writeU16(debugU16(_model.state.aux.color.clear));
+        for (int i = 4; i < 8; i++) r.writeU16(_model.state.debug[i]);
+      }
+      else
+      {
+        for (int i = 0; i < 8; i++) {
+          r.writeU16(_model.state.debug[i]);
+        }
       }
       break;
 

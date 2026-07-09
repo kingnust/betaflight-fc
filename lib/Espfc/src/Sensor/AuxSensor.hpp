@@ -54,7 +54,8 @@ class AuxSensor
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
     bool beginRangefinder(uint32_t now);
     bool rangefinderFailure(uint8_t status, uint32_t now);
-    void stopRangefinder(uint8_t status, uint32_t now);
+    void recordRangefinderError(uint8_t status, uint32_t now);
+    void stopRangefinder(uint8_t status, uint32_t now, bool retry);
     bool updateRangefinder(uint32_t now);
     static void rangefinderTaskEntry(void* arg);
     void rangefinderTask();
@@ -62,10 +63,9 @@ class AuxSensor
     VL53L1X _range;
     TaskHandle_t _rangeTask = nullptr;
     uint32_t _lastRangeInitMs = 0;
-    uint32_t _lastRangeMs = 0;
+    uint32_t _rangeStartedAtMs = 0;
     uint8_t _rangeFailures = 0;
     bool _rangeStarted = false;
-    bool _rangeBusStarted = false;
 #endif
 #if defined(ESPFC_DRONE_PROTO_AUX_TCS34725)
     Device::ColorTCS34725 _color;

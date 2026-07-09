@@ -13,15 +13,6 @@
 #define SONAR_DEBUG_HEX(k, v)
 #endif
 
-#if !defined(ESPFC_DRONE_PROTO_SONAR_DEBUG)
-#undef SONAR_DEBUG_LINE
-#undef SONAR_DEBUG_VALUE
-#undef SONAR_DEBUG_HEX
-#define SONAR_DEBUG_LINE(v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
-#define SONAR_DEBUG_VALUE(k, v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
-#define SONAR_DEBUG_HEX(k, v) do { yield(); vTaskDelay(pdMS_TO_TICKS(10)); } while(0)
-#endif
-
 #if defined(ESPFC_DRONE_PROTO_AUX_ENABLED)
 namespace {
 
@@ -47,6 +38,7 @@ constexpr uint16_t VL53L1X_SENSOR_TIMEOUT_MS = 500;
 constexpr uint32_t VL53L1X_UPDATE_MS = 500;
 constexpr uint32_t VL53L1X_MEASUREMENT_BUDGET_US = 50000;
 constexpr uint8_t VL53L1X_MAX_FAILURES = 4;
+constexpr uint32_t VL53L1X_STALE_MS = 2500;
 constexpr uint32_t VL53L1X_TASK_STACK_BYTES = 8192;
 constexpr uint32_t VL53L1X_RETRY_DISABLED = 0xffffffffu;
 
@@ -123,15 +115,27 @@ bool AuxSensor::beginOpticalFlow(uint32_t now)
 #endif
 
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)
-void AuxSensor::stopRangefinder(uint8_t status, uint32_t now)
+void AuxSensor::recordRangefinderError(uint8_t status, uint32_t now)
+{
+  _model.state.aux.range.lastError = status;
+  _model.state.aux.range.lastErrorMs = now;
+  _model.state.aux.range.failureCount++;
+}
+
+void AuxSensor::stopRangefinder(uint8_t status, uint32_t now, bool retry)
 {
   SONAR_DEBUG_VALUE("stop status", status);
   _rangeStarted = false;
   _model.state.aux.range.present = false;
   _model.state.aux.range.status = status;
   _model.state.aux.range.lastUpdate = 0;
-  _lastRangeInitMs = VL53L1X_RETRY_DISABLED;
+  _lastRangeInitMs = retry ? now + VL53L1X_INIT_RETRY_MS : VL53L1X_RETRY_DISABLED;
   _rangeFailures = 0;
+  recordRangefinderError(status, now);
+  if (retry)
+  {
+    _model.state.aux.range.recoveryCount++;
+  }
 }
 
 bool AuxSensor::beginRangefinder(uint32_t now)
@@ -143,6 +147,7 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   _model.state.aux.range.present = false;
   _model.state.aux.range.status = 255;
   _model.state.aux.range.lastUpdate = 0;
+  _model.state.aux.range.initCount++;
   TwoWire& bus = rangefinderWire();
 
   pinMode(ESPFC_VL53_I2C_SDA, INPUT_PULLUP);
@@ -154,24 +159,23 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   SONAR_DEBUG_LINE("after set clock");
   bus.setTimeOut(VL53L1X_I2C_TIMEOUT_MS);
   SONAR_DEBUG_LINE("after set timeout");
-  _rangeBusStarted = true;
   vTaskDelay(pdMS_TO_TICKS(10));
 
   if (!rangefinderAddressPresent(bus))
   {
-    stopRangefinder(252, now);
+    stopRangefinder(252, now, true);
     return false;
   }
 
   uint16_t modelId = 0;
   if (!rangefinderReadModelId(bus, modelId))
   {
-    stopRangefinder(251, now);
+    stopRangefinder(251, now, true);
     return false;
   }
   if (modelId != VL53L1X_MODEL_ID && modelId != VL53L1X_MODEL_ID_COMPAT)
   {
-    stopRangefinder(250, now);
+    stopRangefinder(250, now, true);
     return false;
   }
 
@@ -180,7 +184,7 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   SONAR_DEBUG_LINE("before vl init");
   if (!_range.init())
   {
-    stopRangefinder(_range.timeoutOccurred() ? 248 : 249, now);
+    stopRangefinder(_range.timeoutOccurred() ? 248 : 249, now, true);
     return false;
   }
   SONAR_DEBUG_LINE("after vl init");
@@ -188,7 +192,7 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   SONAR_DEBUG_LINE("before distance mode");
   if (!_range.setDistanceMode(VL53L1X::Long))
   {
-    stopRangefinder(247, now);
+    stopRangefinder(247, now, true);
     return false;
   }
   SONAR_DEBUG_LINE("after distance mode");
@@ -196,7 +200,7 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   SONAR_DEBUG_LINE("before timing budget");
   if (!_range.setMeasurementTimingBudget(VL53L1X_MEASUREMENT_BUDGET_US))
   {
-    stopRangefinder(246, now);
+    stopRangefinder(246, now, true);
     return false;
   }
   SONAR_DEBUG_LINE("after timing budget");
@@ -206,14 +210,14 @@ bool AuxSensor::beginRangefinder(uint32_t now)
   SONAR_DEBUG_LINE("after start continuous");
   if (_range.timeoutOccurred() || _range.last_status != 0)
   {
-    stopRangefinder(245, now);
+    stopRangefinder(245, now, true);
     return false;
   }
 
   _rangeStarted = true;
+  _rangeStartedAtMs = now;
   _model.state.aux.range.present = true;
   _model.state.aux.range.status = 254;
-  _lastRangeMs = now;
   _model.logger.info().log(F("AUX VL53L1X")).logln(F("Y"));
   return true;
 }
@@ -224,8 +228,10 @@ bool AuxSensor::rangefinderFailure(uint8_t status, uint32_t now)
   _rangeFailures++;
   if (_rangeFailures >= VL53L1X_MAX_FAILURES)
   {
-    stopRangefinder(status, now);
+    stopRangefinder(status, now, true);
+    return false;
   }
+  recordRangefinderError(status, now);
   return false;
 }
 
@@ -236,16 +242,16 @@ bool AuxSensor::updateRangefinder(uint32_t now)
     return false;
   }
 
-  _lastRangeMs = now;
   if (!_range.dataReady())
   {
     if (_range.last_status != 0)
     {
       return rangefinderFailure(244, now);
     }
-    if (_model.state.aux.range.lastUpdate && now - _model.state.aux.range.lastUpdate > 2000)
+    const uint32_t freshnessBase = _model.state.aux.range.lastUpdate ? _model.state.aux.range.lastUpdate : _rangeStartedAtMs;
+    if (freshnessBase && now - freshnessBase > VL53L1X_STALE_MS)
     {
-      _model.state.aux.range.status = 240;
+      return rangefinderFailure(240, now);
     }
     return false;
   }
@@ -269,6 +275,7 @@ bool AuxSensor::updateRangefinder(uint32_t now)
   _model.state.aux.range.signal = debugClamp(lrintf(_range.ranging_data.peak_signal_count_rate_MCPS * 1000.0f));
   _model.state.aux.range.ambient = debugClamp(lrintf(_range.ranging_data.ambient_count_rate_MCPS * 1000.0f));
   _model.state.aux.range.lastUpdate = now;
+  _model.state.aux.range.readCount++;
   _rangeFailures = 0;
 
   if (_model.config.debug.mode == DEBUG_RANGEFINDER || _model.config.debug.mode == DEBUG_LIDAR_TF)
@@ -302,6 +309,7 @@ void AuxSensor::rangefinderTask()
   for (;;)
   {
     const uint32_t now = millis();
+    _model.state.aux.range.taskHeartbeatMs = now;
 
     if (!_rangeStarted)
     {
@@ -348,6 +356,9 @@ int AuxSensor::begin()
   _lastRangeInitMs = millis() + VL53L1X_BOOT_DELAY_MS;
   _model.state.aux.range.present = false;
   _model.state.aux.range.status = 253;
+  _model.state.aux.range.lastError = 255;
+  _model.state.aux.range.lastErrorMs = 0;
+  _model.state.aux.range.taskHeartbeatMs = 0;
   if (!_rangeTask)
   {
     const BaseType_t started = xTaskCreate(rangefinderTaskEntry, "vl53Task", VL53L1X_TASK_STACK_BYTES, this, 0, &_rangeTask);
@@ -356,6 +367,7 @@ int AuxSensor::begin()
     if (started != pdPASS)
     {
       _model.state.aux.range.status = 241;
+      recordRangefinderError(241, millis());
     }
   }
 #endif

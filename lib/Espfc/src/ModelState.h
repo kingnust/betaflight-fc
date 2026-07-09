@@ -479,6 +479,13 @@ struct RangefinderState
   uint16_t signal = 0;
   uint16_t ambient = 0;
   uint32_t lastUpdate = 0;
+  uint32_t readCount = 0;
+  uint32_t failureCount = 0;
+  uint32_t initCount = 0;
+  uint32_t recoveryCount = 0;
+  uint32_t lastErrorMs = 0;
+  uint32_t taskHeartbeatMs = 0;
+  uint8_t lastError = 255;
 };
 
 struct OpticalFlowState

@@ -45,9 +45,11 @@ const __FlashStringHelper* rangeStatusName(uint8_t status)
     case 9: return F("xtalk_fail");
     case 10: return F("sync");
     case 13: return F("min_fail");
-    case 240: return F("bus_stuck");
+    case 240: return F("stale");
     case 241: return F("task_fail");
     case 242: return F("read_i2c_fail");
+    case 243: return F("read_timeout");
+    case 244: return F("ready_i2c_fail");
     case 245: return F("start_fail");
     case 246: return F("budget_fail");
     case 247: return F("mode_fail");
@@ -56,6 +58,7 @@ const __FlashStringHelper* rangeStatusName(uint8_t status)
     case 250: return F("wrong_id");
     case 251: return F("id_read_fail");
     case 252: return F("not_found");
+    case 253: return F("task_pending");
     case 254: return F("started");
     case 255: return F("waiting");
     default: return F("unknown");
@@ -175,6 +178,24 @@ bool dshotProtocol(int8_t protocol)
   return protocol == ESC_PROTOCOL_DSHOT150 || dshotTelemetryProtocol(protocol);
 }
 
+bool isActiveMotorOutput(Model& model, size_t i)
+{
+  if(i >= OUTPUT_CHANNELS) return false;
+  if(i >= model.state.currentMixer.count) return false;
+  if(model.config.output.channel[i].servo) return false;
+  return model.config.pin[PIN_OUTPUT_0 + i] != -1;
+}
+
+uint8_t activeMotorOutputCount(Model& model)
+{
+  uint8_t count = 0;
+  for(size_t i = 0; i < OUTPUT_CHANNELS; i++)
+  {
+    if(isActiveMotorOutput(model, i)) count++;
+  }
+  return count;
+}
+
 void printDshotRpmStatus(Model& model, Stream& stream)
 {
   stream.print(F("      dshot: protocol="));
@@ -215,6 +236,44 @@ void printDshotRpmStatus(Model& model, Stream& stream)
     }
     stream.println();
   }
+}
+
+void printFlowStatus(Model& model, Stream& stream, uint32_t now)
+{
+  stream.print(F("        flow: present="));
+  stream.print(model.opticalFlowActive() ? 1 : 0);
+  stream.print(F(" chip=0x"));
+  stream.print(model.state.aux.flow.chipId, HEX);
+  stream.print(F("/0x"));
+  stream.print(model.state.aux.flow.inverseChipId, HEX);
+  stream.print(F(" dx="));
+  stream.print(model.state.aux.flow.deltaX);
+  stream.print(F(" dy="));
+  stream.print(model.state.aux.flow.deltaY);
+  stream.print(F(" frames="));
+  stream.print(model.state.aux.flow.frameCount);
+  stream.print(F(" age="));
+  printAge(stream, model.state.aux.flow.lastUpdate, now);
+  stream.println();
+}
+
+void printColorStatus(Model& model, Stream& stream, uint32_t now)
+{
+  stream.print(F("       color: present="));
+  stream.print(model.colorSensorActive() ? 1 : 0);
+  stream.print(F(" r="));
+  stream.print(model.state.aux.color.red);
+  stream.print(F(" g="));
+  stream.print(model.state.aux.color.green);
+  stream.print(F(" b="));
+  stream.print(model.state.aux.color.blue);
+  stream.print(F(" clear="));
+  stream.print(model.state.aux.color.clear);
+  stream.print(F(" led="));
+  stream.print(model.state.aux.color.ledOn ? 1 : 0);
+  stream.print(F(" age="));
+  printAge(stream, model.state.aux.color.lastUpdate, now);
+  stream.println();
 }
 
 } // namespace
@@ -1086,6 +1145,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
       PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
       PSTR(" rpm [telemetry 0|1|filter 0-3]"),
+      PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"),
       PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
@@ -1685,6 +1745,34 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.println();
     }
 
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+    printFlowStatus(_model, s, nowMs);
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)
+    printColorStatus(_model, s, nowMs);
+#endif
+
+#if defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+    s.print(F("range_health: reads="));
+    s.print(_model.state.aux.range.readCount);
+    s.print(F(" failures="));
+    s.print(_model.state.aux.range.failureCount);
+    s.print(F(" inits="));
+    s.print(_model.state.aux.range.initCount);
+    s.print(F(" retries="));
+    s.print(_model.state.aux.range.recoveryCount);
+    s.print(F(" task_age="));
+    printAge(s, _model.state.aux.range.taskHeartbeatMs, nowMs);
+    s.print(F(" last_error="));
+    s.print(_model.state.aux.range.lastError);
+    s.print('(');
+    s.print(rangeStatusName(_model.state.aux.range.lastError));
+    s.print(')');
+    s.print(F(" err_age="));
+    printAge(s, _model.state.aux.range.lastErrorMs, nowMs);
+    s.println();
+#endif
+
     s.print(F("       input: "));
     s.print(_model.state.input.frameRate);
     s.print(F(" Hz, "));
@@ -1859,23 +1947,74 @@ void Cli::execute(CliCmd& cmd, Stream& s)
   else if(strcmp_P(cmd.args[0], PSTR("motors")) == 0)
   {
     s.print(PSTR("count: "));
-    s.println(getMotorCount());
-    for (size_t i = 0; i < 8; i++)
+    s.println(activeMotorOutputCount(_model));
+    for (size_t i = 0; i < OUTPUT_CHANNELS; i++)
     {
+      if(!isActiveMotorOutput(_model, i)) continue;
       s.print(i);
       s.print(PSTR(": "));
-      if (i >= OUTPUT_CHANNELS || _model.config.pin[i + PIN_OUTPUT_0] == -1)
-      {
-        s.print(-1);
-        s.print(' ');
-        s.println(0);
-      } else {
-        s.print(_model.config.pin[i + PIN_OUTPUT_0]);
-        s.print(' ');
-        s.println(_model.state.output.us[i]);
-      }
+      s.print(_model.config.pin[i + PIN_OUTPUT_0]);
+      s.print(' ');
+      s.println(_model.state.output.us[i]);
     }
   }
+  else if(strcmp_P(cmd.args[0], PSTR("graph")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("aux")) == 0)
+    {
+      _model.config.debug.mode = DEBUG_RANGEFINDER_QUALITY;
+      s.println(F("debug_mode=OPTICALFLOW aux graph"));
+      s.println(F("debug[0]=flow_dx debug[1]=flow_dy"));
+      s.println(F("debug[2]=red debug[3]=green debug[4]=blue debug[5]=clear"));
+      s.println(F("debug[6]=range_mm debug[7]=range_status"));
+      s.println(F("type save to persist"));
+    }
+    else
+    {
+      s.println(F("usage: graph aux"));
+    }
+  }
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+  else if(strcmp_P(cmd.args[0], PSTR("flow")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("debug")) == 0)
+    {
+      _model.config.debug.mode = DEBUG_RANGEFINDER_QUALITY;
+      s.println(F("debug_mode=OPTICALFLOW aux graph"));
+      s.println(F("debug[0]=flow_dx debug[1]=flow_dy"));
+      s.println(F("debug[2..5]=red,green,blue,clear"));
+      s.println(F("debug[6]=range_mm debug[7]=range_status"));
+      s.println(F("type save to persist"));
+    }
+    printFlowStatus(_model, s, millis());
+  }
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725)
+  else if(strcmp_P(cmd.args[0], PSTR("color")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("debug")) == 0)
+    {
+      _model.config.debug.mode = DEBUG_RANGEFINDER_QUALITY;
+      s.println(F("debug_mode=OPTICALFLOW aux graph"));
+      s.println(F("debug[0]=flow_dx debug[1]=flow_dy"));
+      s.println(F("debug[2..5]=red,green,blue,clear"));
+      s.println(F("debug[6]=range_mm debug[7]=range_status"));
+      s.println(F("type save to persist"));
+    }
+    else if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("led")) == 0)
+    {
+      const bool on = !cmd.args[2] || String(cmd.args[2]).toInt() != 0;
+#if defined(ESPFC_TCS_LED_PIN)
+      Hal::Gpio::pinMode(ESPFC_TCS_LED_PIN, OUTPUT);
+      Hal::Gpio::digitalWrite(ESPFC_TCS_LED_PIN, on ? HIGH : LOW);
+#endif
+      _model.state.aux.color.ledOn = on;
+      s.print(F("TCS LED "));
+      s.println(on ? F("ON") : F("OFF"));
+    }
+    printColorStatus(_model, s, millis());
+  }
+#endif
 #if defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725) && defined(ESPFC_TCS_LED_PIN)
   else if(strcmp_P(cmd.args[0], PSTR("tcsled")) == 0)
   {
