@@ -34,11 +34,7 @@ int Espfc::begin()
   DRONE_PROTO_DEBUG_LINE("after model.begin, before mixer.begin");
   _mixer.begin();
   #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
-  #if defined(ESPFC_DRONE_PROTO_SERVO_AUTO_STEP)
-  Device::DroneProtoServo::startStepMode();
-  #else
-  Device::DroneProtoServo::writeDefault(Device::DroneProtoServo::neutralUs());
-  #endif
+  Device::DroneProtoServo::centerDefault();
   #endif
   DRONE_PROTO_DEBUG_LINE("after mixer.begin, before sensor.begin");
   _sensor.begin();      // requires _hardware.begin()

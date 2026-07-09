@@ -1777,9 +1777,16 @@ void Cli::execute(CliCmd& cmd, Stream& s)
   {
     if(!cmd.args[1])
     {
-      s.print(F("usage: servo <1000-2000> | servo <pin> <1000-2000> | servo step | servo stop | servo off\r\n"));
+      s.print(F("usage: servo <0-180> | servo angle <0-180> | servo angle <pin> <0-180> | servo us <1000-2000> | servo us <pin> <1000-2000> | servo min|mid|max|off\r\n"));
       s.print(F("default pin: "));
       s.println(ESPFC_DRONE_PROTO_SERVO_PIN);
+      s.print(F("range: "));
+      s.print(Device::DroneProtoServo::minUs());
+      s.print(F("us=0deg "));
+      s.print(Device::DroneProtoServo::neutralUs());
+      s.print(F("us=90deg "));
+      s.print(Device::DroneProtoServo::maxUs());
+      s.println(F("us=180deg"));
       s.print(F("current: "));
       if(Device::DroneProtoServo::currentPin() < 0)
       {
@@ -1790,29 +1797,11 @@ void Cli::execute(CliCmd& cmd, Stream& s)
         s.print(F("pin="));
         s.print(Device::DroneProtoServo::currentPin());
         s.print(F(" us="));
-        s.println(Device::DroneProtoServo::currentUs());
+        s.print(Device::DroneProtoServo::currentUs());
+        s.print(F(" angle="));
+        s.print(Device::DroneProtoServo::currentAngleDeg());
+        s.println(F("deg"));
       }
-      s.print(F("step mode: "));
-      s.print(Device::DroneProtoServo::stepModeActive() ? F("on") : F("off"));
-      s.print(F(" running="));
-      s.print(Device::DroneProtoServo::stepRunning() ? 1 : 0);
-      s.print(F(" est="));
-      s.print(Device::DroneProtoServo::estimatedAngleDeg());
-      s.print(F("deg run_ms="));
-      s.println(Device::DroneProtoServo::stepRunMs());
-    }
-    else if(strcmp_P(cmd.args[1], PSTR("step")) == 0)
-    {
-      Device::DroneProtoServo::startStepMode();
-      s.print(F("SERVO STEP pin="));
-      s.print(ESPFC_DRONE_PROTO_SERVO_PIN);
-      s.print(F(" run_ms="));
-      s.println(Device::DroneProtoServo::stepRunMs());
-    }
-    else if(strcmp_P(cmd.args[1], PSTR("stop")) == 0)
-    {
-      Device::DroneProtoServo::stopStepMode();
-      s.println(F("SERVO STOP 1500us"));
     }
     else if(strcmp_P(cmd.args[1], PSTR("off")) == 0)
     {
@@ -1822,11 +1811,65 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     else
     {
       int pin = ESPFC_DRONE_PROTO_SERVO_PIN;
-      int us = atoi(cmd.args[1]);
-      if(cmd.args[2])
+      int value = 90;
+      bool angleMode = true;
+
+      if(strcmp_P(cmd.args[1], PSTR("angle")) == 0)
       {
-        pin = atoi(cmd.args[1]);
-        us = atoi(cmd.args[2]);
+        if(!cmd.args[2])
+        {
+          s.println(F("SERVO angle required"));
+          return;
+        }
+        if(cmd.args[3])
+        {
+          pin = atoi(cmd.args[2]);
+          value = atoi(cmd.args[3]);
+        }
+        else
+        {
+          value = atoi(cmd.args[2]);
+        }
+      }
+      else if(strcmp_P(cmd.args[1], PSTR("us")) == 0)
+      {
+        if(!cmd.args[2])
+        {
+          s.println(F("SERVO us required"));
+          return;
+        }
+        angleMode = false;
+        if(cmd.args[3])
+        {
+          pin = atoi(cmd.args[2]);
+          value = atoi(cmd.args[3]);
+        }
+        else
+        {
+          value = atoi(cmd.args[2]);
+        }
+      }
+      else if(strcmp_P(cmd.args[1], PSTR("min")) == 0)
+      {
+        value = 0;
+      }
+      else if(strcmp_P(cmd.args[1], PSTR("mid")) == 0 || strcmp_P(cmd.args[1], PSTR("center")) == 0)
+      {
+        value = 90;
+      }
+      else if(strcmp_P(cmd.args[1], PSTR("max")) == 0)
+      {
+        value = 180;
+      }
+      else
+      {
+        value = atoi(cmd.args[1]);
+        if(cmd.args[2])
+        {
+          pin = atoi(cmd.args[1]);
+          value = atoi(cmd.args[2]);
+        }
+        angleMode = value <= 180;
       }
 
       if(pin < 0 || pin > 48)
@@ -1835,10 +1878,27 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       }
       else
       {
-        const uint16_t appliedUs = Device::DroneProtoServo::clampUs(us);
-        Device::DroneProtoServo::write((uint8_t)pin, appliedUs);
+        uint16_t appliedUs = 0;
+        uint8_t appliedAngle = 0;
+
+        if(angleMode)
+        {
+          appliedAngle = Device::DroneProtoServo::clampAngleDeg(value);
+          appliedUs = Device::DroneProtoServo::usFromAngleDeg(appliedAngle);
+          Device::DroneProtoServo::writeAngle((uint8_t)pin, appliedAngle);
+        }
+        else
+        {
+          appliedUs = Device::DroneProtoServo::clampUs(value);
+          Device::DroneProtoServo::write((uint8_t)pin, appliedUs);
+          appliedAngle = Device::DroneProtoServo::currentAngleDeg();
+        }
+
         s.print(F("SERVO pin="));
         s.print(pin);
+        s.print(F(" angle="));
+        s.print(appliedAngle);
+        s.print(F("deg"));
         s.print(F(" us="));
         s.println(appliedUs);
       }
