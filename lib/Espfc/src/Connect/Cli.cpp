@@ -165,6 +165,58 @@ void printLogPresetStatus(Model& model, Stream& stream)
   stream.println(model.config.debug.mode);
 }
 
+bool dshotTelemetryProtocol(int8_t protocol)
+{
+  return protocol == ESC_PROTOCOL_DSHOT300 || protocol == ESC_PROTOCOL_DSHOT600;
+}
+
+bool dshotProtocol(int8_t protocol)
+{
+  return protocol == ESC_PROTOCOL_DSHOT150 || dshotTelemetryProtocol(protocol);
+}
+
+void printDshotRpmStatus(Model& model, Stream& stream)
+{
+  stream.print(F("      dshot: protocol="));
+  stream.print(FPSTR(EscDriver::getProtocolName((EscProtocol)model.config.output.protocol)));
+  stream.print(F(" telemetry="));
+  stream.print(model.config.output.dshotTelemetry ? 1 : 0);
+  stream.print(F(" rpm_filter="));
+  stream.print(model.config.gyro.rpmFilter.harmonics);
+  stream.print(F(" poles="));
+  stream.print(model.config.output.motorPoles);
+  if(model.config.output.dshotTelemetry && !dshotTelemetryProtocol(model.config.output.protocol))
+  {
+    stream.print(F(" unsupported_protocol"));
+  }
+  stream.println();
+
+  for(size_t i = 0; i < OUTPUT_CHANNELS; i++)
+  {
+    if(model.config.output.channel[i].servo) continue;
+    if(model.config.pin[PIN_OUTPUT_0 + i] == -1) continue;
+
+    stream.print(F("       rpm"));
+    stream.print(i + 1);
+    stream.print(F(": erpm="));
+    stream.print(model.state.output.telemetry.erpm[i]);
+    stream.print(F(" rpm="));
+    stream.print(lrintf(model.state.output.telemetry.rpm[i]));
+    stream.print(F(" hz="));
+    stream.print(model.state.output.telemetry.freq[i], 1);
+    stream.print(F(" err="));
+    stream.print(model.state.output.telemetry.errors[i] * 0.01f, 2);
+    stream.print('%');
+    if(model.state.output.telemetry.temperature[i])
+    {
+      stream.print(F(" temp="));
+      stream.print(model.state.output.telemetry.temperature[i]);
+      stream.print('C');
+    }
+    stream.println();
+  }
+}
+
 } // namespace
 
 void Cli::Param::print(Stream& stream) const
@@ -1033,6 +1085,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR("available commands:"),
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
       PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
+      PSTR(" rpm [telemetry 0|1|filter 0-3]"),
       PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
@@ -1683,9 +1736,71 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.mode.rescueConfigMode);
     s.println();
 
+    if(dshotProtocol(_model.config.output.protocol) || _model.config.output.dshotTelemetry)
+    {
+      printDshotRpmStatus(_model, s);
+    }
+
     s.print(F("      uptime: "));
     s.print(millis() * 0.001, 1);
     s.println();
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("rpm")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("telemetry")) == 0)
+    {
+      if(!cmd.args[2])
+      {
+        s.println(F("usage: rpm telemetry <0|1>"));
+        printDshotRpmStatus(_model, s);
+        return;
+      }
+      if(_model.isModeActive(MODE_ARMED))
+      {
+        s.println(F("DISARM FIRST"));
+        return;
+      }
+      _model.config.output.dshotTelemetry = *cmd.args[2] != '0';
+      s.print(F("dshot telemetry="));
+      s.println(_model.config.output.dshotTelemetry ? 1 : 0);
+      if(_model.config.output.dshotTelemetry && !dshotTelemetryProtocol(_model.config.output.protocol))
+      {
+        s.println(F("warning: bidir telemetry needs DSHOT300 or DSHOT600"));
+      }
+      s.println(F("type save and reboot"));
+      return;
+    }
+
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("filter")) == 0)
+    {
+      if(!cmd.args[2])
+      {
+        s.println(F("usage: rpm filter <0|1|2|3>"));
+        printDshotRpmStatus(_model, s);
+        return;
+      }
+      if(_model.isModeActive(MODE_ARMED))
+      {
+        s.println(F("DISARM FIRST"));
+        return;
+      }
+      const int32_t harmonics = Utils::clamp(String(cmd.args[2]).toInt(), 0l, (long)RPM_FILTER_HARMONICS_MAX);
+      _model.config.gyro.rpmFilter.harmonics = harmonics;
+      s.print(F("rpm filter harmonics="));
+      s.println(_model.config.gyro.rpmFilter.harmonics);
+      s.println(F("type save and reboot"));
+      return;
+    }
+
+    printDshotRpmStatus(_model, s);
+    if(!_model.config.output.dshotTelemetry)
+    {
+      s.println(F("enable: rpm telemetry 1, save, reboot"));
+    }
+    else if(!dshotTelemetryProtocol(_model.config.output.protocol))
+    {
+      s.println(F("bidir telemetry needs DSHOT300 or DSHOT600"));
+    }
   }
   else if(strcmp_P(cmd.args[0], PSTR("stats")) == 0)
   {

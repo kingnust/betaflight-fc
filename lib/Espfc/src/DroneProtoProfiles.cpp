@@ -56,7 +56,19 @@ void setCommonDshot300(ModelConfig& config)
   config.output.minThrottle = 1070;
   config.output.maxThrottle = 2000;
   config.output.dshotIdle = 550;
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
+  config.output.dshotTelemetry = true;
+#else
   config.output.dshotTelemetry = false;
+#endif
+  config.gyro.rpmFilter.harmonics = 0;
+  config.gyro.rpmFilter.minFreq = 100;
+  config.gyro.rpmFilter.q = 500;
+  config.gyro.rpmFilter.freqLpf = 150;
+  config.gyro.rpmFilter.weights[0] = 100;
+  config.gyro.rpmFilter.weights[1] = 100;
+  config.gyro.rpmFilter.weights[2] = 100;
+  config.gyro.rpmFilter.fade = 30;
 }
 
 void setHoverTune(ModelConfig& config)
@@ -113,6 +125,7 @@ void setBenchSafe(ModelConfig& config)
 
   config.output.protocol = ESC_PROTOCOL_DISABLED;
   config.output.dshotTelemetry = false;
+  config.gyro.rpmFilter.harmonics = 0;
   config.output.throttleLimitType = THROTTLE_LIMIT_TYPE_SCALE;
   config.output.throttleLimitPercent = 50;
   config.output.motorLimit = 70;

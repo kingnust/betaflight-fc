@@ -176,7 +176,9 @@ void Espfc::applyDroneProtoTargetConfig()
   _model.config.gyro.notch2Filter = FilterConfig(FILTER_NOTCH, 0, 0);
   _model.config.gyro.dynLpfFilter = FilterConfig(FILTER_PT1, 0, 0);
   _model.config.gyro.dynamicFilter.count = 0;
+#if !defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
   _model.config.gyro.rpmFilter.harmonics = 0;
+#endif
 
   _model.config.accel.bus = BUS_SPI;
 #if defined(ESPFC_DRONE_PROTO_GYRO_NO_ACCEL)
@@ -227,6 +229,23 @@ void Espfc::applyDroneProtoTargetConfig()
   _model.config.serial[SERIAL_UART_2].id = SERIAL_ID_UART_3;
   _model.config.serial[SERIAL_UART_2].functionMask = SERIAL_FUNCTION_RX_SERIAL;
   _model.config.serial[SERIAL_UART_2].baud = SERIAL_SPEED_400000;
+#endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
+  const DroneProtoProfiles::Profile profile = DroneProtoProfiles::parse(_model.config.modelName);
+  const bool flightProfile = profile == DroneProtoProfiles::PROFILE_HOVER_SAFE || profile == DroneProtoProfiles::PROFILE_ACRO_TEST;
+  const bool telemetryProtocol = _model.config.output.protocol == ESC_PROTOCOL_DSHOT300 || _model.config.output.protocol == ESC_PROTOCOL_DSHOT600;
+  if(flightProfile && telemetryProtocol)
+  {
+    _model.config.output.dshotTelemetry = true;
+    if(_model.config.blackbox.dev == BLACKBOX_DEV_NONE)
+    {
+      _model.config.debug.mode = DEBUG_DSHOT_RPM_TELEMETRY;
+    }
+  }
+  if(!telemetryProtocol)
+  {
+    _model.config.output.dshotTelemetry = false;
+  }
 #endif
 #endif
 }
