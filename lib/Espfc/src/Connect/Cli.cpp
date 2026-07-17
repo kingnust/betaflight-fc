@@ -3,6 +3,9 @@
 #include <algorithm>
 #include "Hardware.h"
 #include "Device/DroneProtoServo.hpp"
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+#include "Device/DroneProtoDirectRc.hpp"
+#endif
 #include "Device/GyroDevice.h"
 #include "DroneProtoProfiles.hpp"
 #include "Hal/Gpio.h"
@@ -72,7 +75,11 @@ namespace {
 
 bool isFresh(uint32_t lastUpdate, uint32_t now, uint32_t maxAgeMs)
 {
-  return lastUpdate != 0 && (uint32_t)(now - lastUpdate) <= maxAgeMs;
+  if(lastUpdate == 0) return false;
+  const int32_t age = static_cast<int32_t>(now - lastUpdate);
+  // Aux sensor timestamps are updated by another core. A status snapshot can
+  // therefore see a timestamp a few milliseconds newer than its local `now`.
+  return age < 0 ? (lastUpdate - now) <= maxAgeMs : static_cast<uint32_t>(age) <= maxAgeMs;
 }
 
 void printAge(Stream& stream, uint32_t lastUpdate, uint32_t now)
@@ -82,7 +89,8 @@ void printAge(Stream& stream, uint32_t lastUpdate, uint32_t now)
     stream.print(F("never"));
     return;
   }
-  stream.print((uint32_t)(now - lastUpdate));
+  const int32_t age = static_cast<int32_t>(now - lastUpdate);
+  stream.print(age < 0 ? 0u : static_cast<uint32_t>(age));
   stream.print(F("ms"));
 }
 
@@ -1865,7 +1873,52 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" Hz, "));
     s.print(_model.state.input.autoFreq);
     s.print(F(" Hz, "));
-    s.println(_model.state.input.autoFactor);
+    s.print(_model.state.input.autoFactor);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+    s.print(F(" source="));
+    if (Device::DroneProtoDirectRc::active(nowMs))
+    {
+      s.print(F("WIFI_DIRECT"));
+    }
+    else if (INPUT_CHANNELS > 22 && _model.state.input.raw[22] > 1700)
+    {
+      s.print(F("TRAINER_PHONE"));
+    }
+    else
+    {
+      s.print(F("RADIOMASTER"));
+    }
+#endif
+    s.println();
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+    s.print(F(" direct_rc: ready="));
+    s.print(Device::DroneProtoDirectRc::ready() ? 1 : 0);
+    s.print(F(" init_err="));
+    s.print(Device::DroneProtoDirectRc::initError());
+    s.print(F(" active="));
+    s.print(Device::DroneProtoDirectRc::active(nowMs) ? 1 : 0);
+    s.print(F(" age="));
+    s.print(Device::DroneProtoDirectRc::ageMs(nowMs));
+    s.print(F("ms rx="));
+    s.print(Device::DroneProtoDirectRc::receivedFrames());
+    s.print(F(" valid="));
+    s.print(Device::DroneProtoDirectRc::validFrames());
+    s.print(F(" bad_crc="));
+    s.print(Device::DroneProtoDirectRc::badCrcFrames());
+    s.print(F(" bad_size="));
+    s.print(Device::DroneProtoDirectRc::badSizeFrames());
+    s.print(F(" bad_value="));
+    s.print(Device::DroneProtoDirectRc::badValueFrames());
+    s.print(F(" dup="));
+    s.print(Device::DroneProtoDirectRc::duplicateFrames());
+    s.print(F(" old="));
+    s.print(Device::DroneProtoDirectRc::outOfOrderFrames());
+    s.print(F(" missed="));
+    s.print(Device::DroneProtoDirectRc::missedFrames());
+    s.print(F(" seq="));
+    s.print(Device::DroneProtoDirectRc::lastSequence());
+    s.println();
+#endif
 
     s.print(F("     prearm: rx_frames="));
     s.print(_model.state.input.frameCount);

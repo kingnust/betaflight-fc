@@ -2,6 +2,9 @@
 #include "Input.h"
 #include "Utils/Math.hpp"
 #include "Utils/MemoryHelper.h"
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+#include "Device/DroneProtoDirectRc.hpp"
+#endif
 
 namespace Espfc {
 
@@ -105,6 +108,17 @@ InputStatus FAST_CODE_ATTR Input::readInputs()
   uint32_t startTime = micros();
 
   InputStatus status = _device->update();
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  const bool directNewFrame = Device::DroneProtoDirectRc::consumeNewFrame();
+  const bool directActive = Device::DroneProtoDirectRc::active();
+  if(directActive && (directNewFrame || status != INPUT_IDLE))
+  {
+    // While a confirmed direct packet stream is fresh, the RadioMaster link
+    // must not overwrite its channels or inject an RX-loss state. Once the
+    // direct timeout expires, the underlying receiver status takes over again.
+    status = INPUT_RECEIVED;
+  }
+#endif
 
   if(_model.config.debug.mode == DEBUG_RX_TIMING)
   {
@@ -139,7 +153,17 @@ void FAST_CODE_ATTR Input::processInputs()
   uint32_t startTime = micros();
 
   uint16_t channels[INPUT_CHANNELS];
-  _device->get(channels, _model.state.input.channelCount);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  const bool directActive = Device::DroneProtoDirectRc::active();
+  if(directActive)
+  {
+    Device::DroneProtoDirectRc::getChannels(channels, _model.state.input.channelCount);
+  }
+  else
+#endif
+  {
+    _device->get(channels, _model.state.input.channelCount);
+  }
 
   _model.state.input.channelsValid = true;
   for(size_t c = 0; c < _model.state.input.channelCount; c++)

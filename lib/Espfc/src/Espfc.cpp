@@ -1,6 +1,9 @@
 #include "Espfc.h"
 #include "Hal/Gpio.h"
 #include "Device/DroneProtoServo.hpp"
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+#include "Device/DroneProtoDirectRc.hpp"
+#endif
 #include "DroneProtoProfiles.hpp"
 #include "Debug_Espfc.h"
 
@@ -22,6 +25,12 @@ int Espfc::load()
 int Espfc::begin()
 {
   DRONE_PROTO_DEBUG_LINE("espfc.begin start");
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  // Start the Wi-Fi driver before sensor tasks and timing-sensitive outputs.
+  // ESP32-S3 radio calibration can otherwise trip the interrupt watchdog when
+  // it overlaps auxiliary sensor startup.
+  Device::DroneProtoDirectRc::begin();
+#endif
   _model.state.led.begin(_model.config.pin[PIN_LED_BLINK], _model.config.led.type, _model.config.led.invert);
 
   DRONE_PROTO_DEBUG_LINE("before serial.begin");
@@ -177,6 +186,7 @@ void Espfc::applyDroneProtoTargetConfig()
   _model.config.gyro.dynLpfFilter = FilterConfig(FILTER_PT1, 0, 0);
   _model.config.gyro.dynamicFilter.count = 0;
 #if !defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)
+  _model.config.output.dshotTelemetry = false;
   _model.config.gyro.rpmFilter.harmonics = 0;
 #endif
 

@@ -24,6 +24,9 @@
 #elif defined(ESPFC_WIFI)
 #include <WiFi.h>
 #endif
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+#include <esp_private/system_internal.h>
+#endif
 
 namespace {
 #if defined(ESPFC_SPI_0)
@@ -297,6 +300,14 @@ void Hardware::detectBaro()
 
 void Hardware::restart(const Model& model)
 {
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  // Do not wait on live Wi-Fi/RMT tasks during an intentional reboot. Reset
+  // both CPUs and digital peripherals immediately, and preserve a software
+  // reset reason for the next boot.
+  (void)model;
+  esp_reset_reason_set_hint(ESP_RST_SW);
+  esp_restart_noos_dig();
+#endif
   if (model.state.mixer.escMotor) model.state.mixer.escMotor->end();
   if (model.state.mixer.escServo) model.state.mixer.escServo->end();
 #ifdef ESPFC_SERIAL_SOFT_0_WIFI

@@ -9,7 +9,11 @@ namespace {
 
 bool isFresh(uint32_t lastUpdate, uint32_t now, uint32_t maxAgeMs)
 {
-  return lastUpdate != 0 && (uint32_t)(now - lastUpdate) <= maxAgeMs;
+  if(lastUpdate == 0) return false;
+  const int32_t age = static_cast<int32_t>(now - lastUpdate);
+  // Auxiliary sensor tasks run on the other core, so tolerate a timestamp
+  // that advances just after this control-cycle timestamp was captured.
+  return age < 0 ? (lastUpdate - now) <= maxAgeMs : static_cast<uint32_t>(age) <= maxAgeMs;
 }
 
 } // namespace
