@@ -61,7 +61,7 @@
 #define ESPFC_SERIAL_2_DEV Serial2
 #define ESPFC_SERIAL_2_DEV_T HardwareSerial
 #if defined(ESPFC_TARGET_DRONE_PROTO)
-#define ESPFC_SERIAL_2_TX 37
+#define ESPFC_SERIAL_2_TX 39
 #define ESPFC_SERIAL_2_RX 38
 #else
 #define ESPFC_SERIAL_2_TX 18

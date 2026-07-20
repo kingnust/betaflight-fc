@@ -8,6 +8,8 @@
 #include "ModelConfig.h"
 #include "helper_3dmath.h"
 #include "Control/Pid.h"
+#include "Control/DroneProtoCommandRouter.hpp"
+#include "Control/OpticalFlowPositionHold.h"
 #include "Kalman.h"
 #include "Utils/Filter.h"
 #include "Utils/Timer.h"
@@ -542,6 +544,9 @@ struct Mtf02pState
   uint8_t flowStatus = 255;
   uint32_t sensorTimeMs = 0;
   uint32_t packetCount = 0;
+  uint32_t rxByteCount = 0;
+  uint32_t syncByteCount = 0;
+  uint32_t noiseByteCount = 0;
   uint32_t checksumErrorCount = 0;
   uint32_t frameErrorCount = 0;
   uint32_t lastUpdate = 0;
@@ -566,6 +571,7 @@ struct ModelState
   AuxSensorState aux;
 
   InputState input;
+  Control::DroneProtoCommandState commands;
   FailsafeState failsafe;
 
   AttitudeState attitude;
@@ -573,6 +579,7 @@ struct ModelState
   RotationMatrixFloat trimRotation;
 
   AltitudeState altitude;
+  Control::OpticalFlowPositionHoldState positionHold;
 
   SetpointState setpoint;
   Control::Pid innerPid[AXIS_COUNT_RPYT];

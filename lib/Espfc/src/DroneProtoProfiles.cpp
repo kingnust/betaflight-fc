@@ -38,6 +38,9 @@ void setCommonModes(ModelConfig& config)
   setMode(config.conditions[0], MODE_ARMED, AXIS_AUX_1, 1700, 2100);
   setMode(config.conditions[1], MODE_ANGLE, AXIS_AUX_2, 1300, 2100);
   setMode(config.conditions[2], MODE_AIRMODE, AXIS_AUX_3, 1700, 2100);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  setMode(config.conditions[3], MODE_POSHOLD, AXIS_AUX_2, 1700, 2100);
+#endif
 }
 
 void setCommonReceiver(ModelConfig& config)

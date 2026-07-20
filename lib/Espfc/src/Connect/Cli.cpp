@@ -2,7 +2,10 @@
 #include <platform.h>
 #include <algorithm>
 #include "Hardware.h"
+#include "Control/DroneProtoCommandRouter.hpp"
+#include "Control/OpticalFlowPositionHold.h"
 #include "Device/DroneProtoServo.hpp"
+#include "Device/InputCRSF.h"
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
 #include "Device/DroneProtoDirectRc.hpp"
 #endif
@@ -92,6 +95,55 @@ void printAge(Stream& stream, uint32_t lastUpdate, uint32_t now)
   const int32_t age = static_cast<int32_t>(now - lastUpdate);
   stream.print(age < 0 ? 0u : static_cast<uint32_t>(age));
   stream.print(F("ms"));
+}
+
+void printCrsfRxStatus(Model& model, Stream& stream, uint32_t now)
+{
+  const Device::CrsfInputDiagnostics& d = Device::InputCRSF::diagnostics();
+  stream.print(F("     crsf_rx: rx_gpio="));
+#if defined(ESPFC_TARGET_DRONE_PROTO) && defined(ESPFC_SERIAL_2_RX) && defined(ESPFC_SERIAL_2_TX)
+  stream.print(ESPFC_SERIAL_2_RX);
+  stream.print(F(" tx_gpio="));
+  stream.print(ESPFC_SERIAL_2_TX);
+#else
+  stream.print(F("configured"));
+#endif
+  stream.print(F(" baud="));
+  stream.print(d.activeBaud);
+  stream.print(F(" locked="));
+  stream.print(d.baudLocked ? 1 : 0);
+  stream.print(F(" switches="));
+  stream.println(d.baudSwitches);
+
+  stream.print(F("              bytes="));
+  stream.print(d.rawBytes);
+  stream.print(F(" sync="));
+  stream.print(d.syncBytes);
+  stream.print(F(" valid_frames="));
+  stream.print(d.validFrames);
+  stream.print(F(" rc_frames="));
+  stream.print(d.rcFrames);
+  stream.print(F(" subset="));
+  stream.print(d.subsetRcFrames);
+  stream.print(F(" crc_err="));
+  stream.print(d.crcErrors);
+  stream.print(F(" size_err="));
+  stream.print(d.invalidSizes);
+  stream.print(F(" type_err="));
+  stream.println(d.unsupportedTypes);
+
+  stream.print(F("              byte_age="));
+  printAge(stream, d.lastByteMs, now);
+  stream.print(F(" frame_age="));
+  printAge(stream, d.lastValidFrameMs, now);
+  stream.print(F(" last_type=0x"));
+  stream.print(d.lastFrameType, HEX);
+  stream.print(F(" input_frames="));
+  stream.print(model.state.input.frameCount);
+  stream.print(F(" valid="));
+  stream.print(model.state.input.channelsValid ? 1 : 0);
+  stream.print(F(" loss="));
+  stream.println(model.state.input.rxLoss ? 1 : 0);
 }
 
 const __FlashStringHelper* colorTypeName(uint8_t type)
@@ -293,6 +345,12 @@ void printMtf02pStatus(Model& model, Stream& stream, uint32_t now)
   stream.print(model.state.aux.mtf02p.enabled ? 1 : 0);
   stream.print(F(" present="));
   stream.print(model.state.aux.mtf02p.present ? 1 : 0);
+  stream.print(F(" rx="));
+  stream.print(model.state.aux.mtf02p.rxByteCount);
+  stream.print(F(" sync="));
+  stream.print(model.state.aux.mtf02p.syncByteCount);
+  stream.print(F(" noise="));
+  stream.print(model.state.aux.mtf02p.noiseByteCount);
   stream.print(F(" packets="));
   stream.print(model.state.aux.mtf02p.packetCount);
   stream.print(F(" checksum_err="));
@@ -1221,7 +1279,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
       PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
       PSTR(" rpm [telemetry 0|1|filter 0-3]"),
-      PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"),
+      PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"), PSTR(" rxstatus"),
       PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
@@ -1237,6 +1295,25 @@ void Cli::execute(CliCmd& cmd, Stream& s)
   {
     printVersion(s);
     s.println();
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("sensor_hardware")) == 0)
+  {
+    // API 1.48 Configurator uses these index-aligned names to build the
+    // Sensors-page hardware selectors.
+    s.println(F("gyro: AUTO,NONE,MPU6000,MPU6050,MPU6500,MPU9250,LSM6DSO,ICM20602,BMI160,ICM42688,BMI088"));
+    s.println(F("acc: AUTO,NONE,MPU6000,MPU6050,MPU6500,MPU9250,LSM6DSO,ICM20602,BMI160,ICM42688,BMI088"));
+    s.println(F("baro: DEFAULT,NONE,BMP085,MS5611,BMP280,SPL06-001,BMP388"));
+    s.println(F("mag: DEFAULT,NONE,HMC5883L,AK8975,AK8963,QMC5883L,QMC5883P,BMM150"));
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+    s.println(F("rangefinder: NONE,HCSR04,TFMINI,TF02,MTF01,MTF02,MTF01P,MTF02P,TFNOVA"));
+    s.println(F("opticalflow: NONE,MTF02P"));
+#elif defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901)
+    s.println(F("rangefinder: NONE"));
+    s.println(F("opticalflow: NONE,PMW3901"));
+#else
+    s.println(F("rangefinder: NONE"));
+    s.println(F("opticalflow: NONE"));
+#endif
   }
 #if defined(ESPFC_WIFI) || defined(ESPFC_WIFI_ALT)
   else if(strcmp_P(cmd.args[0], PSTR("wifi")) == 0)
@@ -1868,27 +1945,59 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.println();
 #endif
 
+    printCrsfRxStatus(_model, s, nowMs);
     s.print(F("       input: "));
     s.print(_model.state.input.frameRate);
     s.print(F(" Hz, "));
     s.print(_model.state.input.autoFreq);
     s.print(F(" Hz, "));
     s.print(_model.state.input.autoFactor);
-#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
     s.print(F(" source="));
-    if (Device::DroneProtoDirectRc::active(nowMs))
+    s.print(Control::DroneProtoCommandRouter::sourceName(_model.state.commands.source));
+    s.println();
+    s.print(F("    command: selected="));
+    s.print(Control::DroneProtoCommandRouter::taskName(_model.state.commands.selected));
+    s.print(F(" pending="));
+    s.print(_model.state.commands.pending.valid
+      ? Control::DroneProtoCommandRouter::taskName(_model.state.commands.pending.command)
+      : "NONE");
+    s.print(F(" seq="));
+    s.print(_model.state.commands.requestSequence);
+    s.print(F(" overwritten="));
+    s.print(_model.state.commands.overwrittenRequests);
+    if(_model.state.commands.pending.valid)
     {
-      s.print(F("WIFI_DIRECT"));
+      s.print(F(" age="));
+      s.print(nowMs - _model.state.commands.pending.receivedAtMs);
+      s.print(F("ms"));
     }
-    else if (INPUT_CHANNELS > 22 && _model.state.input.raw[22] > 1700)
+    s.print(F(" ch11-16="));
+    for(size_t i = 0; i < Control::DRONE_PROTO_FUNCTION_CHANNELS; i++)
     {
-      s.print(F("TRAINER_PHONE"));
+      if(i) s.print(',');
+      s.print(_model.state.commands.functionUs[i]);
     }
-    else
-    {
-      s.print(F("RADIOMASTER"));
-    }
-#endif
+    s.println();
+    s.print(F("    poshold: requested="));
+    s.print(_model.state.positionHold.requested ? 1 : 0);
+    s.print(F(" active="));
+    s.print(_model.state.positionHold.active ? 1 : 0);
+    s.print(F(" healthy="));
+    s.print(_model.state.positionHold.healthy ? 1 : 0);
+    s.print(F(" fault="));
+    s.print(Control::positionHoldFaultName(_model.state.positionHold.fault));
+    s.print(F(" vel="));
+    s.print(_model.state.positionHold.velocityBody[0], 3);
+    s.print(',');
+    s.print(_model.state.positionHold.velocityBody[1], 3);
+    s.print(F(" pos="));
+    s.print(_model.state.positionHold.positionEarth[0], 3);
+    s.print(',');
+    s.print(_model.state.positionHold.positionEarth[1], 3);
+    s.print(F(" target="));
+    s.print(_model.state.positionHold.targetEarth[0], 3);
+    s.print(',');
+    s.print(_model.state.positionHold.targetEarth[1], 3);
     s.println();
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
     s.print(F(" direct_rc: ready="));
@@ -1905,6 +2014,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(Device::DroneProtoDirectRc::validFrames());
     s.print(F(" bad_crc="));
     s.print(Device::DroneProtoDirectRc::badCrcFrames());
+    s.print(F(" bad_link="));
+    s.print(Device::DroneProtoDirectRc::badLinkFrames());
     s.print(F(" bad_size="));
     s.print(Device::DroneProtoDirectRc::badSizeFrames());
     s.print(F(" bad_value="));
@@ -2121,6 +2232,34 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     }
   }
 #if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+  else if(strcmp_P(cmd.args[0], PSTR("poshold")) == 0)
+  {
+    const Control::PositionHoldFault fault = Control::positionHoldSensorFault(_model, millis());
+    s.print(F("requested="));
+    s.print(_model.isModeActive(MODE_POSHOLD) ? 1 : 0);
+    s.print(F(" active="));
+    s.print(_model.state.positionHold.active ? 1 : 0);
+    s.print(F(" health="));
+    s.print(Control::positionHoldFaultName(fault));
+    s.print(F(" range_mm="));
+    s.print(_model.state.aux.range.distanceMm);
+    s.print(F(" flow="));
+    s.print(_model.state.aux.flow.deltaX);
+    s.print(',');
+    s.print(_model.state.aux.flow.deltaY);
+    s.print(F(" vel_mps="));
+    s.print(_model.state.positionHold.velocityBody[0], 3);
+    s.print(',');
+    s.print(_model.state.positionHold.velocityBody[1], 3);
+    s.print(F(" pos_m="));
+    s.print(_model.state.positionHold.positionEarth[0], 3);
+    s.print(',');
+    s.print(_model.state.positionHold.positionEarth[1], 3);
+    s.print(F(" target_m="));
+    s.print(_model.state.positionHold.targetEarth[0], 3);
+    s.print(',');
+    s.println(_model.state.positionHold.targetEarth[1], 3);
+  }
   else if(strcmp_P(cmd.args[0], PSTR("flow")) == 0)
   {
     if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("debug")) == 0)
@@ -2187,6 +2326,35 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.println(on ? F("ON") : F("OFF"));
   }
 #endif
+  else if(strcmp_P(cmd.args[0], PSTR("rxstatus")) == 0)
+  {
+    printCrsfRxStatus(_model, s, millis());
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("task")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("clear")) == 0)
+    {
+      _model.state.commands.pending.valid = false;
+      s.println(F("TASK REQUEST CLEARED"));
+    }
+    s.print(F("source="));
+    s.print(Control::DroneProtoCommandRouter::sourceName(_model.state.commands.source));
+    s.print(F(" selected="));
+    s.print(Control::DroneProtoCommandRouter::taskName(_model.state.commands.selected));
+    s.print(F(" pending="));
+    s.print(_model.state.commands.pending.valid
+      ? Control::DroneProtoCommandRouter::taskName(_model.state.commands.pending.command)
+      : "NONE");
+    s.print(F(" seq="));
+    s.print(_model.state.commands.requestSequence);
+    s.print(F(" ch11-16="));
+    for(size_t i = 0; i < Control::DRONE_PROTO_FUNCTION_CHANNELS; i++)
+    {
+      if(i) s.print(',');
+      s.print(_model.state.commands.functionUs[i]);
+    }
+    s.println();
+  }
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
   else if(strcmp_P(cmd.args[0], PSTR("servo")) == 0)
   {
@@ -2216,6 +2384,19 @@ void Cli::execute(CliCmd& cmd, Stream& s)
         s.print(F(" angle="));
         s.print(Device::DroneProtoServo::currentAngleDeg());
         s.println(F("deg"));
+      }
+      s.print(F("forward: "));
+      if(Device::DroneProtoServo::forwardedChannel() == 0xff)
+      {
+        s.println(F("manual"));
+      }
+      else
+      {
+        s.print(F("CH"));
+        s.print(Device::DroneProtoServo::forwardedChannel() + 1);
+        s.print(F(" rate="));
+        s.print(Device::DroneProtoServo::rate());
+        s.println('%');
       }
     }
     else if(strcmp_P(cmd.args[1], PSTR("off")) == 0)

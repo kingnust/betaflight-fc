@@ -22,6 +22,7 @@ public:
   static uint32_t receivedFrames();
   static uint32_t validFrames();
   static uint32_t badCrcFrames();
+  static uint32_t badLinkFrames();
   static uint32_t badSizeFrames();
   static uint32_t badValueFrames();
   static uint32_t duplicateFrames();

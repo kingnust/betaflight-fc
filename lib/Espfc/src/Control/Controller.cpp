@@ -4,7 +4,7 @@
 
 namespace Espfc::Control {
 
-Controller::Controller(Model& model): _model(model), _rates{} {}
+Controller::Controller(Model& model): _model(model), _rates{}, _positionHold(model) {}
 
 int Controller::begin()
 {
@@ -17,6 +17,7 @@ int Controller::begin()
   beginOuterLoop(AXIS_ROLL);
   beginOuterLoop(AXIS_PITCH);
   beginAltHold();
+  _positionHold.begin();
 
   return 1;
 }
@@ -122,12 +123,16 @@ void Controller::innerLoopRobot()
 
 void FAST_CODE_ATTR Controller::outerLoop()
 {
+  const bool positionHoldActive = _positionHold.update();
+
   // Roll/Pitch rates control
-  if (_model.isModeActive(MODE_ANGLE))
+  if (_model.isModeActive(MODE_ANGLE) || positionHoldActive)
   {
     for (size_t i = 0; i < AXIS_COUNT_RP; i++)
     {
-      const float angleSetpoint = Utils::toRad(_model.config.level.angleLimit) * _model.state.input.ch[i];
+      const float angleSetpoint = positionHoldActive
+        ? _model.state.positionHold.angleSetpoint[i]
+        : Utils::toRad(_model.config.level.angleLimit) * _model.state.input.ch[i];
       _model.state.setpoint.rate[i] = _model.state.outerPid[i].update(angleSetpoint, _model.state.attitude.euler[i]);
       // disable fterm in angle mode
       _model.state.innerPid[i].fScale = 0.f;
@@ -145,7 +150,7 @@ void FAST_CODE_ATTR Controller::outerLoop()
   _model.state.setpoint.rate[AXIS_YAW] = calculateSetpointRate(AXIS_YAW, _model.state.input.ch[AXIS_YAW]);
 
   // thrust control
-  if (_model.isModeActive(MODE_ALTHOLD))
+  if (_model.isModeActive(MODE_ALTHOLD) || positionHoldActive)
   {
     _model.state.setpoint.rate[AXIS_THRUST] = calcualteAltHoldSetpoint();
   }
@@ -180,7 +185,7 @@ void FAST_CODE_ATTR Controller::innerLoop()
   }
 
   // thrust control
-  if (_model.isModeActive(MODE_ALTHOLD))
+  if (_model.isModeActive(MODE_ALTHOLD) || _model.state.positionHold.active)
   {
     output.ch[AXIS_THRUST] = innerPid[AXIS_THRUST].update(setpoint.rate[AXIS_THRUST], altitude.vario);
   }

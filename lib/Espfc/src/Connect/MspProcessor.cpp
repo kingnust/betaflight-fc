@@ -239,6 +239,34 @@ static uint8_t opticalFlowHardwareId(const Espfc::Model& model)
 #endif
 }
 
+static uint8_t activeGyroHardwareId(const Espfc::Model& model)
+{
+  return model.gyroActive() && model.state.gyro.dev
+    ? model.state.gyro.dev->getType()
+    : Espfc::GYRO_NONE;
+}
+
+static uint8_t activeAccelHardwareId(const Espfc::Model& model)
+{
+  return model.accelActive() && model.state.gyro.dev
+    ? model.state.gyro.dev->getType()
+    : Espfc::GYRO_NONE;
+}
+
+static uint8_t activeBaroHardwareId(const Espfc::Model& model)
+{
+  return model.baroActive() && model.state.baro.dev
+    ? model.state.baro.dev->getType()
+    : Espfc::BARO_NONE;
+}
+
+static uint8_t activeMagHardwareId(const Espfc::Model& model)
+{
+  return model.magActive() && model.state.mag.dev
+    ? model.state.mag.dev->getType()
+    : Espfc::MAG_NONE;
+}
+
 }
 
 namespace Espfc {
@@ -360,7 +388,11 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_BOXNAMES:
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+      r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;POSHOLD;"));
+#else
       r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;"));
+#endif
       break;
 
     case MSP_BOXIDS:
@@ -372,6 +404,9 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU8(MODE_FAILSAFE);
       r.writeU8(MODE_BLACKBOX);
       r.writeU8(MODE_BLACKBOX_ERASE);
+#if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
+      r.writeU8(MODE_POSHOLD);
+#endif
       break;
 
     case MSP_MODE_RANGES:
@@ -626,6 +661,27 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       _model.reload();
       break;
 
+    case MSP2_SENSOR_CONFIG_ACTIVE:
+      r.writeU8(activeGyroHardwareId(_model));
+      r.writeU8(activeAccelHardwareId(_model));
+      r.writeU8(activeBaroHardwareId(_model));
+      r.writeU8(activeMagHardwareId(_model));
+      r.writeU8(_model.rangefinderActive() ? sonarHardwareId(_model) : BF_SENSOR_HARDWARE_NONE);
+      r.writeU8(_model.opticalFlowActive() ? opticalFlowHardwareId(_model) : BF_SENSOR_HARDWARE_NONE);
+      break;
+
+    case MSP2_GYRO_SENSOR:
+      if(_model.gyroActive())
+      {
+        r.writeU8(1);
+        r.writeU8(activeGyroHardwareId(_model));
+      }
+      else
+      {
+        r.writeU8(0);
+      }
+      break;
+
     case MSP_SENSOR_ALIGNMENT:
       r.writeU8(_model.config.gyro.align); // gyro align
       r.writeU8(_model.config.gyro.align); // acc align, Starting with 4.0 gyro and acc alignment are the same
@@ -695,6 +751,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         {
           int id = m.readU8();
           int k = _model.getSerialIndex((SerialPortId)id);
+          if(k == -1)
           {
             m.advance(packetSize - 1);
             continue;
@@ -1491,6 +1548,10 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
           r.writeU16(Device::DroneProtoServo::minUs());
           r.writeU16(Device::DroneProtoServo::maxUs());
           r.writeU16(Device::DroneProtoServo::neutralUs());
+          r.writeU8(Device::DroneProtoServo::rate());
+          r.writeU8(Device::DroneProtoServo::forwardedChannel());
+          r.writeU32(0);
+          continue;
         }
         else
 #endif
@@ -1507,7 +1568,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
           r.writeU16(1500);
         }
         r.writeU8(100);
-        r.writeU8(-1);
+        r.writeU8(0xff);
         r.writeU32(0);
       }
       break;
@@ -1518,13 +1579,14 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         uint16_t minUs = m.readU16();
         uint16_t maxUs = m.readU16();
         uint16_t neutralUs = m.readU16();
-        m.readU8();
-        m.readU8();
+        int8_t rate = (int8_t)m.readU8();
+        uint8_t forwardedChannel = m.readU8();
         m.readU32();
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
         if(isDroneProtoServoIndex(i))
         {
           Device::DroneProtoServo::setConfig(minUs, maxUs, neutralUs);
+          Device::DroneProtoServo::setForwarding(forwardedChannel, rate);
           Device::DroneProtoServo::writeDefault(Device::DroneProtoServo::neutralUs());
         }
         else

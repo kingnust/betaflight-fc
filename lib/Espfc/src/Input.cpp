@@ -1,5 +1,6 @@
 
 #include "Input.h"
+#include "Control/DroneProtoCommandRouter.hpp"
 #include "Utils/Math.hpp"
 #include "Utils/MemoryHelper.h"
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
@@ -21,6 +22,7 @@ int Input::begin()
   _model.state.input.rxLoss = true;
   _model.state.input.rxFailSafe = false;
   _model.state.input.autoFactor = 1.f / (2.f + _model.config.input.filterAutoFactor * 0.1f);
+  Control::DroneProtoCommandRouter::reset(_model.state.commands);
   switch(_model.config.input.interpolationMode)
   {
     case INPUT_INTERPOLATION_AUTO:
@@ -165,13 +167,27 @@ void FAST_CODE_ATTR Input::processInputs()
     _device->get(channels, _model.state.input.channelCount);
   }
 
+  uint16_t logicalChannels[INPUT_CHANNELS];
+  for(size_t c = 0; c < _model.state.input.channelCount; c++)
+  {
+    const InputChannelConfig& ich = _model.config.input.channel[c];
+    logicalChannels[c] = channels[ich.map];
+  }
+
+#if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  Control::DroneProtoCommandRouter::route(logicalChannels, channels, _model.state.input.channelCount,
+    directActive, millis(), _model.state.commands);
+#else
+  Control::DroneProtoCommandRouter::route(logicalChannels, channels, _model.state.input.channelCount,
+    false, millis(), _model.state.commands);
+#endif
+
   _model.state.input.channelsValid = true;
   for(size_t c = 0; c < _model.state.input.channelCount; c++)
   {
     const InputChannelConfig& ich = _model.config.input.channel[c];
 
-    // remap channels
-    int16_t v = _model.state.input.raw[c] = (int16_t)channels[ich.map];
+    int16_t v = _model.state.input.raw[c] = (int16_t)logicalChannels[c];
 
     // adj midrc
     v -= _model.config.input.midRc - PWM_RANGE_MID;

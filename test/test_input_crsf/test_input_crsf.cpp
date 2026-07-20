@@ -47,6 +47,48 @@ void test_input_crsf_rc_valid()
   TEST_ASSERT_EQUAL_UINT16(1500u, input.get(3));
   TEST_ASSERT_EQUAL_UINT16(1000u, input.get(4));
   TEST_ASSERT_EQUAL_UINT16(1000u, input.get(5));
+
+  const CrsfInputDiagnostics& first = InputCRSF::diagnostics();
+  TEST_ASSERT_EQUAL_UINT32(sizeof(data), first.rawBytes);
+  TEST_ASSERT_EQUAL_UINT32(1, first.validFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, first.rcFrames);
+  TEST_ASSERT_EQUAL_UINT32(0, first.crcErrors);
+  TEST_ASSERT_EQUAL_UINT32(420000, first.activeBaud);
+  TEST_ASSERT_FALSE(first.baudLocked);
+
+  for (size_t i = 0; i < sizeof(data); i++) {
+    input.parse(frame, data[i]);
+  }
+  const CrsfInputDiagnostics& second = InputCRSF::diagnostics();
+  TEST_ASSERT_EQUAL_UINT32(2 * sizeof(data), second.rawBytes);
+  TEST_ASSERT_EQUAL_UINT32(2, second.validFrames);
+  TEST_ASSERT_EQUAL_UINT32(2, second.rcFrames);
+  TEST_ASSERT_TRUE(second.baudLocked);
+}
+
+void test_input_crsf_bad_crc_diagnostic()
+{
+  InputCRSF input;
+  CrsfMessage frame;
+  memset(&frame, 0, sizeof(frame));
+
+  When(Method(ArduinoFake(), micros)).Return(0);
+  input.begin(nullptr, nullptr);
+
+  const uint8_t data[] = {
+    0xC8, 0x18, 0x16, 0xE0, 0x03, 0xDF, 0xD9, 0xC0, 0xF7, 0x8B, 0x5F, 0x94, 0xAF,
+    0x7C, 0xE5, 0x2B, 0x5F, 0xF9, 0xCA, 0x07, 0x00, 0x00, 0x4C, 0x7C, 0xE2, 0x22
+  };
+  for (size_t i = 0; i < sizeof(data); i++) {
+    input.parse(frame, data[i]);
+  }
+
+  const CrsfInputDiagnostics& diagnostic = InputCRSF::diagnostics();
+  TEST_ASSERT_EQUAL_UINT32(sizeof(data), diagnostic.rawBytes);
+  TEST_ASSERT_EQUAL_UINT32(0, diagnostic.validFrames);
+  TEST_ASSERT_EQUAL_UINT32(0, diagnostic.rcFrames);
+  TEST_ASSERT_EQUAL_UINT32(1, diagnostic.crcErrors);
+  TEST_ASSERT_FALSE(diagnostic.baudLocked);
 }
 
 void test_input_crsf_rc_valid_no_payload()
@@ -697,6 +739,7 @@ int main(int argc, char **argv)
 {
   UNITY_BEGIN();
   RUN_TEST(test_input_crsf_rc_valid);
+  RUN_TEST(test_input_crsf_bad_crc_diagnostic);
   RUN_TEST(test_input_crsf_rc_valid_no_payload);
   RUN_TEST(test_input_crsf_rc_prefix);
   RUN_TEST(test_crsf_encode_rc);

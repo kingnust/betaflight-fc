@@ -15,13 +15,21 @@ static inline uint16_t convertSubsetChannel(uint16_t value, uint8_t resolutionCo
   return 988 + (value >> resolutionConfig);
 }
 
-InputCRSF::InputCRSF(): _serial(NULL), _telemetry(NULL), _state(CRSF_ADDR), _idx(0), _new_data(false) {}
+CrsfInputDiagnostics InputCRSF::_diagnostics;
+
+InputCRSF::InputCRSF():
+  _serial(NULL), _telemetry(NULL), _state(CRSF_ADDR), _idx(0), _new_data(false),
+  _lastBaudProbeMs(0), _validFramesAtBaud(0) {}
 
 int InputCRSF::begin(Device::SerialDevice * serial, TelemetryManager * telemetry)
 {
   _serial = serial;
   _telemetry = telemetry;
   _telemetry_next = micros() + TELEMETRY_INTERVAL;
+  _lastBaudProbeMs = millis();
+  _validFramesAtBaud = 0;
+  _diagnostics = CrsfInputDiagnostics{};
+  _diagnostics.activeBaud = CRSF_BAUD_DEFAULT;
   std::fill_n((uint8_t*)&_frame, sizeof(_frame), 0);
   std::fill_n(_channels, CHANNELS, 0);
   return 1;
@@ -36,7 +44,8 @@ InputStatus FAST_CODE_ATTR InputCRSF::update()
   {
     uint8_t buff[64] = {0};
     len = std::min(len, sizeof(buff));
-    _serial->readMany(buff, len);
+    len = _serial->readMany(buff, len);
+    if(len) _diagnostics.lastByteMs = millis();
     size_t i = 0;
     while(i < len)
     {
@@ -54,6 +63,19 @@ InputStatus FAST_CODE_ATTR InputCRSF::update()
   {
     _new_data = false;
     return INPUT_RECEIVED;
+  }
+
+  const uint32_t nowMs = millis();
+  if(!_diagnostics.baudLocked && nowMs - _lastBaudProbeMs >= BAUD_PROBE_INTERVAL_MS)
+  {
+    _diagnostics.activeBaud = _diagnostics.activeBaud == CRSF_BAUD_DEFAULT
+      ? CRSF_BAUD_FALLBACK
+      : CRSF_BAUD_DEFAULT;
+    _diagnostics.baudSwitches++;
+    _validFramesAtBaud = 0;
+    _lastBaudProbeMs = nowMs;
+    reset();
+    _serial->updateBaudRate(_diagnostics.activeBaud);
   }
 
   return INPUT_IDLE;
@@ -77,15 +99,22 @@ size_t InputCRSF::getChannelCount() const { return CHANNELS; }
 
 bool InputCRSF::needAverage() const { return false; }
 
+const CrsfInputDiagnostics& InputCRSF::diagnostics()
+{
+  return _diagnostics;
+}
+
 void FAST_CODE_ATTR InputCRSF::parse(CrsfMessage& msg, int d)
 {
   uint8_t *data = reinterpret_cast<uint8_t*>(&msg);
   uint8_t c = (uint8_t)(d & 0xff);
+  _diagnostics.rawBytes++;
   switch(_state)
   {
     case CRSF_ADDR:
       if(c == CRSF_SYNC_BYTE)
       {
+        _diagnostics.syncBytes++;
         data[_idx++] = c;
         _state = CRSF_SIZE;
       }
@@ -96,6 +125,7 @@ void FAST_CODE_ATTR InputCRSF::parse(CrsfMessage& msg, int d)
         data[_idx++] = c;
         _state = CRSF_TYPE;
       } else {
+        _diagnostics.invalidSizes++;
         reset();
       }
       break;
@@ -109,6 +139,7 @@ void FAST_CODE_ATTR InputCRSF::parse(CrsfMessage& msg, int d)
           _state = CRSF_CRC; // no payload, next byte is crc
         }
       } else {
+        _diagnostics.unsupportedTypes++;
         reset();
       }
       break;
@@ -124,7 +155,16 @@ void FAST_CODE_ATTR InputCRSF::parse(CrsfMessage& msg, int d)
       reset();
       uint8_t crc = msg.crc();
       if(c == crc) {
+        const uint32_t nowMs = millis();
+        _diagnostics.validFrames++;
+        _diagnostics.lastValidFrameMs = nowMs;
+        _diagnostics.lastFrameType = msg.type;
+        _lastBaudProbeMs = nowMs;
+        if(_validFramesAtBaud < VALID_FRAMES_TO_LOCK_BAUD) _validFramesAtBaud++;
+        if(_validFramesAtBaud >= VALID_FRAMES_TO_LOCK_BAUD) _diagnostics.baudLocked = true;
         apply(msg);
+      } else {
+        _diagnostics.crcErrors++;
       }
       break;
     }
@@ -174,6 +214,7 @@ void FAST_CODE_ATTR InputCRSF::applyChannels(const CrsfMessage& msg)
   const auto * data = reinterpret_cast<const CrsfData*>(msg.payload);
   Crsf::decodeRcDataShift8(_channels, data);
   //Crsf::decodeRcData(_channels, frame);
+  _diagnostics.rcFrames++;
   _new_data = true;
 }
 
@@ -218,6 +259,8 @@ void FAST_CODE_ATTR InputCRSF::applyChannelsSubset(const CrsfMessage& msg)
     bitsMerged -= channelBits;
   }
 
+  _diagnostics.rcFrames++;
+  _diagnostics.subsetRcFrames++;
   _new_data = true;
 }
 

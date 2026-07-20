@@ -1,4 +1,5 @@
 #include "Control/Actuator.h"
+#include "Control/OpticalFlowPositionHold.h"
 #include "Utils/Math.hpp"
 #include <algorithm>
 #include <cmath>
@@ -184,7 +185,7 @@ void Actuator::updateModeMask()
   {
     bool newVal = newMask & (1 << i);
     bool oldVal = _model.state.mode.mask & (1 << i);
-    if(newVal == oldVal) continue; // mode unchanged
+    if(newVal == oldVal && !(i == MODE_POSHOLD && newVal)) continue; // revalidate sensor-backed hold
     if(newVal && !canActivateMode((FlightMode)i))
     {
       newMask &= ~(1 << i); // block activation, clear bit
@@ -206,6 +207,8 @@ bool Actuator::canActivateMode(FlightMode mode)
       return _model.state.mode.airmodeAllowed;
     case MODE_ALTHOLD:
       return _model.state.baro.dev;
+    case MODE_POSHOLD:
+      return positionHoldSensorFault(_model, millis()) == POSHOLD_OK;
     default:
       return true;
   }

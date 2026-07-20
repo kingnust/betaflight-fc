@@ -15,11 +15,15 @@
 #define ESPFC_DRONE_PROTO_DIRECT_RC_TIMEOUT_MS 180
 #endif
 
+#ifndef ESPFC_DRONE_PROTO_DIRECT_RC_LINK_ID
+#define ESPFC_DRONE_PROTO_DIRECT_RC_LINK_ID 0x6D5A31C7UL
+#endif
+
 namespace Espfc::Device {
 namespace {
 
 constexpr uint32_t kMagic = 0x31524344UL;  // "DRC1" little-endian
-constexpr uint8_t kVersion = 1;
+constexpr uint8_t kVersion = 2;
 constexpr size_t kPacketChannels = 16;
 constexpr uint16_t kMinUs = 988;
 constexpr uint16_t kMidUs = 1500;
@@ -28,6 +32,7 @@ constexpr uint16_t kMaxUs = 2012;
 struct __attribute__((packed)) DirectRcPacket
 {
   uint32_t magic;
+  uint32_t linkId;
   uint8_t version;
   uint8_t channelCount;
   uint8_t flags;
@@ -37,6 +42,8 @@ struct __attribute__((packed)) DirectRcPacket
   uint16_t channels[kPacketChannels];
   uint16_t crc;
 };
+
+static_assert(sizeof(DirectRcPacket) == 52, "Direct RC packet layout changed");
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 bool s_ready = false;
@@ -49,6 +56,7 @@ uint16_t s_lastSeq = 0;
 uint32_t s_received = 0;
 uint32_t s_valid = 0;
 uint32_t s_badCrc = 0;
+uint32_t s_badLink = 0;
 uint32_t s_badSize = 0;
 uint32_t s_badValue = 0;
 uint32_t s_duplicate = 0;
@@ -133,6 +141,14 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len)
   {
     portENTER_CRITICAL_ISR(&s_mux);
     ++s_badCrc;
+    portEXIT_CRITICAL_ISR(&s_mux);
+    return;
+  }
+
+  if(packet.linkId != ESPFC_DRONE_PROTO_DIRECT_RC_LINK_ID)
+  {
+    portENTER_CRITICAL_ISR(&s_mux);
+    ++s_badLink;
     portEXIT_CRITICAL_ISR(&s_mux);
     return;
   }
@@ -323,6 +339,14 @@ uint32_t DroneProtoDirectRc::badCrcFrames()
 {
   portENTER_CRITICAL(&s_mux);
   const uint32_t value = s_badCrc;
+  portEXIT_CRITICAL(&s_mux);
+  return value;
+}
+
+uint32_t DroneProtoDirectRc::badLinkFrames()
+{
+  portENTER_CRITICAL(&s_mux);
+  const uint32_t value = s_badLink;
   portEXIT_CRITICAL(&s_mux);
   return value;
 }

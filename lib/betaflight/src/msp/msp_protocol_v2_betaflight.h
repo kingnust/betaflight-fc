@@ -21,3 +21,5 @@
 #define MSP2_BETAFLIGHT_BIND                0x3000
 #define MSP2_MOTOR_OUTPUT_REORDERING        0x3001
 #define MSP2_SET_MOTOR_OUTPUT_REORDERING    0x3002
+#define MSP2_SENSOR_CONFIG_ACTIVE           0x300A
+#define MSP2_GYRO_SENSOR                    0x300D

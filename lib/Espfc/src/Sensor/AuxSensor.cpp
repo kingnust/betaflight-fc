@@ -261,6 +261,9 @@ bool AuxSensor::beginMtf02p(uint32_t now)
   resetMtf02pParser();
   _model.state.aux.mtf02p.enabled = true;
   _model.state.aux.mtf02p.present = false;
+  _model.state.aux.mtf02p.rxByteCount = 0;
+  _model.state.aux.mtf02p.syncByteCount = 0;
+  _model.state.aux.mtf02p.noiseByteCount = 0;
   _model.state.aux.range.present = false;
   _model.state.aux.range.status = 255;
   _model.state.aux.flow.present = false;
@@ -349,11 +352,13 @@ bool AuxSensor::parseMtf02pByte(uint8_t value, uint32_t now)
   {
     if (value != MTF02P_FRAME_HEAD)
     {
+      _model.state.aux.mtf02p.noiseByteCount++;
       return false;
     }
     _mtf02pFrame[0] = value;
     _mtf02pChecksum = value;
     _mtf02pFrameIndex = 1;
+    _model.state.aux.mtf02p.syncByteCount++;
     return false;
   }
 
@@ -408,6 +413,7 @@ bool AuxSensor::updateMtf02p(uint32_t now)
   size_t bytesRead = 0;
   while (ESPFC_MTF02P_DEV.available() > 0 && bytesRead < MTF02P_MAX_BYTES_PER_UPDATE)
   {
+    _model.state.aux.mtf02p.rxByteCount++;
     updated = parseMtf02pByte((uint8_t)ESPFC_MTF02P_DEV.read(), now) || updated;
     bytesRead++;
   }

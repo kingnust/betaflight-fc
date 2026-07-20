@@ -117,7 +117,8 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   _buzzer.update();
   _model.state.led.update();
   #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_SERVO_PIN)
-  Device::DroneProtoServo::update();
+  Device::DroneProtoServo::updateInput(_model.state.input.us, _model.state.input.channelCount,
+    _model.state.input.channelsValid && !_model.state.input.rxLoss && !_model.state.input.rxFailSafe);
   #endif
   _model.state.stats.update();
 
@@ -430,7 +431,7 @@ void Espfc::forceDroneProtoBenchConfig()
 #endif
   _model.config.blackbox.dev = BLACKBOX_DEV_NONE;
   _model.config.blackbox.pDenom = 0;
-#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725) || defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
+#if defined(ESPFC_DRONE_PROTO_ENABLE_PMW3901) || defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P) || defined(ESPFC_DRONE_PROTO_ENABLE_TCS34725) || defined(ESPFC_DRONE_PROTO_ENABLE_VL53L1X)
   // API 1.48 Configurator displays this numeric slot as OPTICALFLOW.
   _model.config.debug.mode = DEBUG_RANGEFINDER_QUALITY;
 #elif defined(ESPFC_DRONE_PROTO_ENABLE_DSHOT_BIDIR)

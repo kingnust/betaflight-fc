@@ -11,6 +11,24 @@
 
 namespace Espfc::Device {
 
+struct CrsfInputDiagnostics
+{
+    uint32_t activeBaud = 420000;
+    uint32_t baudSwitches = 0;
+    uint32_t rawBytes = 0;
+    uint32_t syncBytes = 0;
+    uint32_t validFrames = 0;
+    uint32_t crcErrors = 0;
+    uint32_t invalidSizes = 0;
+    uint32_t unsupportedTypes = 0;
+    uint32_t rcFrames = 0;
+    uint32_t subsetRcFrames = 0;
+    uint32_t lastByteMs = 0;
+    uint32_t lastValidFrameMs = 0;
+    uint8_t lastFrameType = 0;
+    bool baudLocked = false;
+};
+
 class InputCRSF: public InputDevice
 {
   public:
@@ -31,6 +49,8 @@ class InputCRSF: public InputDevice
     virtual size_t getChannelCount() const override;
     virtual bool needAverage() const override;
 
+    static const CrsfInputDiagnostics& diagnostics();
+
     void print(char c) const;
     void parse(Rc::CrsfMessage& frame, int d);
 
@@ -44,6 +64,10 @@ class InputCRSF: public InputDevice
 
     static constexpr size_t CHANNELS = 32;
     static constexpr size_t TELEMETRY_INTERVAL = 20000;
+    static constexpr uint32_t CRSF_BAUD_DEFAULT = 420000;
+    static constexpr uint32_t CRSF_BAUD_FALLBACK = 400000;
+    static constexpr uint32_t BAUD_PROBE_INTERVAL_MS = 1200;
+    static constexpr uint8_t VALID_FRAMES_TO_LOCK_BAUD = 2;
 
     Device::SerialDevice * _serial;
     TelemetryManager * _telemetry;
@@ -53,7 +77,11 @@ class InputCRSF: public InputDevice
     Rc::CrsfMessage _frame;
     uint16_t _channels[CHANNELS];
     uint32_t _telemetry_next;
+    uint32_t _lastBaudProbeMs;
+    uint8_t _validFramesAtBaud;
     Connect::MspMessage _msg;
+
+    static CrsfInputDiagnostics _diagnostics;
 };
 
 }
