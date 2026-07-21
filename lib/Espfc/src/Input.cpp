@@ -212,6 +212,12 @@ void FAST_CODE_ATTR Input::processInputs()
       v = getFailsafeValue(c);
       if(c <= AXIS_THRUST) _model.state.input.channelsValid = false;
     }
+#if defined(ESPFC_TARGET_DRONE_PROTO)
+    else
+    {
+      v = Utils::clamp<int16_t>(v, PWM_RANGE_MIN, PWM_RANGE_MAX);
+    }
+#endif
 
     // update input buffer
     _model.state.input.bufferPrevious[c] = _model.state.input.buffer[c];

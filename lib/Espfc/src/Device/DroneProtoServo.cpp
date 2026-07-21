@@ -27,6 +27,12 @@ static constexpr uint8_t POSITION_MAX_DEG = 180;
 static constexpr uint8_t CHANNEL_FORWARDING_DISABLED = 0xff;
 static constexpr uint8_t DEFAULT_FORWARD_CHANNEL = 7;  // RC CH8, RadioMaster rear roller.
 static constexpr uint32_t MANUAL_OVERRIDE_MS = 750;
+static constexpr uint32_t INPUT_UPDATE_INTERVAL_MS = 20;
+static constexpr uint32_t INVALID_INPUT_HOLD_MS = 500;
+static constexpr float INPUT_FILTER_ALPHA = 0.25f;
+static constexpr float INPUT_HYSTERESIS_US = 6.0f;
+static constexpr float INPUT_CENTER_DEADBAND_US = 8.0f;
+static constexpr uint16_t OUTPUT_QUANTUM_US = 4;
 
 static int8_t activePin = -1;
 static uint16_t configuredMinUs = 1000;
@@ -37,6 +43,10 @@ static uint8_t activeAngleDeg = POSITION_CENTER_DEG;
 static uint8_t configuredForwardedChannel = DEFAULT_FORWARD_CHANNEL;
 static int8_t configuredRate = 100;
 static uint32_t manualOverrideUntilMs = 0;
+static uint32_t nextInputUpdateMs = 0;
+static uint32_t lastValidInputMs = 0;
+static float filteredInputUs = 1500.0f;
+static bool inputFilterInitialized = false;
 
 static uint8_t angleFromUs(uint16_t us);
 
@@ -65,6 +75,12 @@ static void writeAttached(uint8_t pin, uint16_t us)
   activeUs = clampUs(us);
   activeAngleDeg = angleFromUs(activeUs);
   ledcWrite(LEDC_CHANNEL, dutyFromUs(activeUs));
+}
+
+static uint16_t quantizeUs(uint16_t us)
+{
+  const uint16_t quantized = ((us + (OUTPUT_QUANTUM_US / 2)) / OUTPUT_QUANTUM_US) * OUTPUT_QUANTUM_US;
+  return clampUs(quantized);
 }
 
 static uint8_t mapUsToAngle(uint16_t us, uint16_t inMin, uint16_t inMax, uint8_t outMin, uint8_t outMax)
@@ -235,14 +251,33 @@ void updateInput(const float *inputUs, size_t channelCount, bool valid)
 {
   if(!available() || configuredForwardedChannel == CHANNEL_FORWARDING_DISABLED || manualOverrideActive()) return;
 
+  const uint32_t nowMs = millis();
+
   if(!valid || inputUs == nullptr || configuredForwardedChannel >= channelCount)
   {
+    if(lastValidInputMs != 0 && nowMs - lastValidInputMs <= INVALID_INPUT_HOLD_MS) return;
+    inputFilterInitialized = false;
     if(activeUs != configuredNeutralUs) writeAttached(defaultPin(), configuredNeutralUs);
     return;
   }
 
-  const float input = std::clamp(inputUs[configuredForwardedChannel], 1000.0f, 2000.0f);
-  float normalized = (input - 1500.0f) / 500.0f;
+  lastValidInputMs = nowMs;
+  if(static_cast<int32_t>(nowMs - nextInputUpdateMs) < 0) return;
+  nextInputUpdateMs = nowMs + INPUT_UPDATE_INTERVAL_MS;
+
+  float input = std::clamp(inputUs[configuredForwardedChannel], 1000.0f, 2000.0f);
+  if(std::fabs(input - 1500.0f) <= INPUT_CENTER_DEADBAND_US) input = 1500.0f;
+  if(!inputFilterInitialized)
+  {
+    filteredInputUs = input;
+    inputFilterInitialized = true;
+  }
+  else if(std::fabs(input - filteredInputUs) > INPUT_HYSTERESIS_US)
+  {
+    filteredInputUs += (input - filteredInputUs) * INPUT_FILTER_ALPHA;
+  }
+
+  float normalized = (filteredInputUs - 1500.0f) / 500.0f;
   normalized *= configuredRate * 0.01f;
 
   float targetUs = configuredNeutralUs;
@@ -255,7 +290,7 @@ void updateInput(const float *inputUs, size_t channelCount, bool valid)
     targetUs += normalized * (configuredMaxUs - configuredNeutralUs);
   }
 
-  const uint16_t target = clampUs(lrintf(targetUs));
+  const uint16_t target = quantizeUs(clampUs(lrintf(targetUs)));
   if(target != activeUs) writeAttached(defaultPin(), target);
 }
 

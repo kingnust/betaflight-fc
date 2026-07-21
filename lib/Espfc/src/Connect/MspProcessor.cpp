@@ -24,6 +24,13 @@ extern "C" {
 
 namespace {
 
+// Betaflight's MSP contract exposes 8 remappable inputs and at most 18 RC
+// channels. Drone Prototype keeps 32 channels internally for trainer/task
+// routing, but oversized legacy MSP replies can make the Receiver tab reject
+// the entire response.
+constexpr size_t MSP_RX_MAP_CHANNELS = 8;
+constexpr size_t MSP_RC_CHANNELS = 18;
+
 enum SerialSpeedIndex {
   SERIAL_SPEED_INDEX_AUTO = 0,
   SERIAL_SPEED_INDEX_9600,
@@ -882,7 +889,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_RX_MAP:
-      for(size_t i = 0; i < INPUT_CHANNELS; i++)
+      for(size_t i = 0; i < MSP_RX_MAP_CHANNELS; i++)
       {
         r.writeU8(_model.config.input.channel[i].map);
       }
@@ -1050,7 +1057,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_RXFAIL_CONFIG:
-      for (size_t i = 0; i < _model.state.input.channelCount; i++)
+      for(size_t i = 0; i < std::min(_model.state.input.channelCount, MSP_RC_CHANNELS); i++)
       {
         r.writeU8(_model.config.input.channel[i].fsMode);
         r.writeU16(_model.config.input.channel[i].fsValue);
@@ -1073,7 +1080,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       break;
 
     case MSP_RC:
-      for(size_t i = 0; i < _model.state.input.channelCount; i++)
+      for(size_t i = 0; i < std::min(_model.state.input.channelCount, MSP_RC_CHANNELS); i++)
       {
         r.writeU16(lrintf(_model.state.input.us[i]));
       }

@@ -345,6 +345,9 @@ void printMtf02pStatus(Model& model, Stream& stream, uint32_t now)
   stream.print(model.state.aux.mtf02p.enabled ? 1 : 0);
   stream.print(F(" present="));
   stream.print(model.state.aux.mtf02p.present ? 1 : 0);
+  stream.print(F(" protocol="));
+  stream.print(model.state.aux.mtf02p.protocol == 2 ? F("MSP2") :
+    (model.state.aux.mtf02p.protocol == 1 ? F("MICOLINK") : F("AUTO")));
   stream.print(F(" rx="));
   stream.print(model.state.aux.mtf02p.rxByteCount);
   stream.print(F(" sync="));
@@ -357,6 +360,14 @@ void printMtf02pStatus(Model& model, Stream& stream, uint32_t now)
   stream.print(model.state.aux.mtf02p.checksumErrorCount);
   stream.print(F(" frame_err="));
   stream.print(model.state.aux.mtf02p.frameErrorCount);
+  stream.print(F(" heads=EF:"));
+  stream.print(model.state.aux.mtf02p.micolinkHeadCount);
+  stream.print(F(" FE:"));
+  stream.print(model.state.aux.mtf02p.mavlinkV1HeadCount);
+  stream.print(F(" FD:"));
+  stream.print(model.state.aux.mtf02p.mavlinkV2HeadCount);
+  stream.print(F(" $:"));
+  stream.print(model.state.aux.mtf02p.mspHeadCount);
   stream.print(F(" dev="));
   stream.print(model.state.aux.mtf02p.devId);
   stream.print(F(" sys="));
@@ -385,6 +396,17 @@ void printMtf02pStatus(Model& model, Stream& stream, uint32_t now)
   stream.print(model.state.aux.mtf02p.flowQuality);
   stream.print(F(" flow_status="));
   stream.print(model.state.aux.mtf02p.flowStatus);
+  stream.println();
+
+  stream.print(F("              raw="));
+  for (size_t i = 0; i < sizeof(model.state.aux.mtf02p.rawSample); i++)
+  {
+    const uint8_t index = (model.state.aux.mtf02p.rawSampleIndex + i) % sizeof(model.state.aux.mtf02p.rawSample);
+    const uint8_t value = model.state.aux.mtf02p.rawSample[index];
+    if (value < 0x10) stream.print('0');
+    stream.print(value, HEX);
+    if (i + 1 < sizeof(model.state.aux.mtf02p.rawSample)) stream.print(' ');
+  }
   stream.println();
 }
 #endif
@@ -1955,6 +1977,15 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" source="));
     s.print(Control::DroneProtoCommandRouter::sourceName(_model.state.commands.source));
     s.println();
+    s.print(F("     trainer: heartbeat="));
+    s.print(_model.state.commands.trainerHeartbeatFresh ? 1 : 0);
+    s.print(F(" edges="));
+    s.print(_model.state.commands.trainerHeartbeatTransitions);
+    s.print(F(" marker="));
+    s.print(_model.state.commands.trainerMarkerUs);
+    s.print(F(" age="));
+    printAge(s, _model.state.commands.trainerHeartbeatLastTransitionMs, nowMs);
+    s.println();
     s.print(F("    command: selected="));
     s.print(Control::DroneProtoCommandRouter::taskName(_model.state.commands.selected));
     s.print(F(" pending="));
@@ -2347,6 +2378,10 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       : "NONE");
     s.print(F(" seq="));
     s.print(_model.state.commands.requestSequence);
+    s.print(F(" trainer_hb="));
+    s.print(_model.state.commands.trainerHeartbeatFresh ? 1 : 0);
+    s.print(F(" marker="));
+    s.print(_model.state.commands.trainerMarkerUs);
     s.print(F(" ch11-16="));
     for(size_t i = 0; i < Control::DRONE_PROTO_FUNCTION_CHANNELS; i++)
     {

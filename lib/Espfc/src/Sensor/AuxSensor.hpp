@@ -60,11 +60,19 @@ class AuxSensor
     void resetMtf02pParser();
     bool parseMtf02pByte(uint8_t value, uint32_t now);
     bool handleMtf02pFrame(uint32_t now);
+    void resetMtf02pMspParser();
+    bool parseMtf02pMspByte(uint8_t value, uint32_t now);
+    bool handleMtf02pMspFrame(uint32_t now);
 
     uint8_t _mtf02pFrame[70] = {};
     uint8_t _mtf02pFrameIndex = 0;
     uint8_t _mtf02pFrameLength = 0;
     uint8_t _mtf02pChecksum = 0;
+    uint8_t _mtf02pMspFrame[25] = {};
+    uint8_t _mtf02pMspFrameIndex = 0;
+    uint8_t _mtf02pMspPayloadLength = 0;
+    uint8_t _mtf02pMspCrc = 0;
+    uint8_t _mtf02pProtocol = 0;
     bool _mtf02pStarted = false;
 #endif
 #if defined(ESPFC_DRONE_PROTO_AUX_VL53L1X)

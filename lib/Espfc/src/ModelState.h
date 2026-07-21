@@ -534,6 +534,7 @@ struct Mtf02pState
 {
   bool enabled = false;
   bool present = false;
+  uint8_t protocol = 0;
   uint8_t devId = 0;
   uint8_t sysId = 0;
   uint8_t seq = 0;
@@ -549,6 +550,12 @@ struct Mtf02pState
   uint32_t noiseByteCount = 0;
   uint32_t checksumErrorCount = 0;
   uint32_t frameErrorCount = 0;
+  uint32_t micolinkHeadCount = 0;
+  uint32_t mavlinkV1HeadCount = 0;
+  uint32_t mavlinkV2HeadCount = 0;
+  uint32_t mspHeadCount = 0;
+  uint8_t rawSample[16] = {};
+  uint8_t rawSampleIndex = 0;
   uint32_t lastUpdate = 0;
 };
 

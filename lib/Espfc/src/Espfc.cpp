@@ -218,6 +218,10 @@ void Espfc::applyDroneProtoTargetConfig()
 #endif
   _model.config.featureMask = FEATURE_RX_SERIAL;
   _model.config.input.serialRxProvider = SERIALRX_CRSF;
+  // CRSF extended limits decode to roughly 881..2120 us. Accept that edge
+  // while Input clamps valid controls back to the normal PWM range.
+  _model.config.input.minRc = 875;
+  _model.config.input.maxRc = 2125;
   _model.config.loopSync = 1;
   _model.config.mixerSync = 1;
 

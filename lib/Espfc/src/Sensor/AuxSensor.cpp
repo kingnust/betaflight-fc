@@ -27,6 +27,10 @@ constexpr uint8_t MTF02P_MSG_ID_RANGE_SENSOR = 0x51;
 constexpr uint8_t MTF02P_HEADER_LEN = 6;
 constexpr uint8_t MTF02P_MAX_PAYLOAD_LEN = 64;
 constexpr uint8_t MTF02P_RANGE_PAYLOAD_LEN = 20;
+constexpr uint8_t MTF02P_MSP_HEADER_LEN = 8;
+constexpr uint8_t MTF02P_MSP_MAX_PAYLOAD_LEN = 16;
+constexpr uint16_t MTF02P_MSP_RANGEFINDER = 0x1F01;
+constexpr uint16_t MTF02P_MSP_OPTICAL_FLOW = 0x1F02;
 constexpr uint32_t MTF02P_STALE_MS = 1000;
 constexpr size_t MTF02P_MAX_BYTES_PER_UPDATE = 160;
 
@@ -43,6 +47,28 @@ int16_t readI16Le(const uint8_t* data)
 uint32_t readU32Le(const uint8_t* data)
 {
   return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+int32_t readI32Le(const uint8_t* data)
+{
+  return (int32_t)readU32Le(data);
+}
+
+int16_t clampI16(int32_t value)
+{
+  if (value < -32768) return -32768;
+  if (value > 32767) return 32767;
+  return (int16_t)value;
+}
+
+uint8_t crc8DvbS2(uint8_t crc, uint8_t value)
+{
+  crc ^= value;
+  for (uint8_t bit = 0; bit < 8; bit++)
+  {
+    crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0xD5) : (uint8_t)(crc << 1);
+  }
+  return crc;
 }
 #endif
 
@@ -255,15 +281,30 @@ void AuxSensor::resetMtf02pParser()
   _mtf02pChecksum = 0;
 }
 
+void AuxSensor::resetMtf02pMspParser()
+{
+  _mtf02pMspFrameIndex = 0;
+  _mtf02pMspPayloadLength = 0;
+  _mtf02pMspCrc = 0;
+}
+
 bool AuxSensor::beginMtf02p(uint32_t now)
 {
   (void)now;
   resetMtf02pParser();
+  resetMtf02pMspParser();
+  _mtf02pProtocol = 0;
   _model.state.aux.mtf02p.enabled = true;
   _model.state.aux.mtf02p.present = false;
+  _model.state.aux.mtf02p.protocol = 0;
   _model.state.aux.mtf02p.rxByteCount = 0;
   _model.state.aux.mtf02p.syncByteCount = 0;
   _model.state.aux.mtf02p.noiseByteCount = 0;
+  _model.state.aux.mtf02p.micolinkHeadCount = 0;
+  _model.state.aux.mtf02p.mavlinkV1HeadCount = 0;
+  _model.state.aux.mtf02p.mavlinkV2HeadCount = 0;
+  _model.state.aux.mtf02p.mspHeadCount = 0;
+  _model.state.aux.mtf02p.rawSampleIndex = 0;
   _model.state.aux.range.present = false;
   _model.state.aux.range.status = 255;
   _model.state.aux.flow.present = false;
@@ -402,6 +443,143 @@ bool AuxSensor::parseMtf02pByte(uint8_t value, uint32_t now)
   return handled;
 }
 
+bool AuxSensor::handleMtf02pMspFrame(uint32_t now)
+{
+  const uint16_t command = readU16Le(&_mtf02pMspFrame[4]);
+  const uint8_t* payload = &_mtf02pMspFrame[MTF02P_MSP_HEADER_LEN];
+
+  if (command == MTF02P_MSP_RANGEFINDER)
+  {
+    if (_mtf02pMspPayloadLength != 5)
+    {
+      _model.state.aux.mtf02p.frameErrorCount++;
+      return false;
+    }
+    const uint8_t quality = payload[0];
+    const uint8_t status = quality > 0 ? 0 : 1;
+    const uint32_t distanceMm = readU32Le(&payload[1]);
+    _model.state.aux.mtf02p.strength = quality;
+    _model.state.aux.mtf02p.tofStatus = status;
+    _model.state.aux.range.present = true;
+    _model.state.aux.range.distanceMm = distanceMm > 65535u ? 65535u : (uint16_t)distanceMm;
+    _model.state.aux.range.status = status;
+    _model.state.aux.range.signal = quality;
+    _model.state.aux.range.lastUpdate = now;
+    _model.state.aux.range.readCount++;
+  }
+  else if (command == MTF02P_MSP_OPTICAL_FLOW)
+  {
+    if (_mtf02pMspPayloadLength != 9)
+    {
+      _model.state.aux.mtf02p.frameErrorCount++;
+      return false;
+    }
+    const uint8_t quality = payload[0];
+    const uint8_t status = quality > 0 ? 0 : 1;
+    _model.state.aux.mtf02p.flowQuality = quality;
+    _model.state.aux.mtf02p.flowStatus = status;
+    _model.state.aux.flow.present = true;
+    _model.state.aux.flow.deltaX = clampI16(readI32Le(&payload[1]));
+    _model.state.aux.flow.deltaY = clampI16(readI32Le(&payload[5]));
+    _model.state.aux.flow.frameCount++;
+    _model.state.aux.flow.lastUpdate = now;
+  }
+  else
+  {
+    return false;
+  }
+
+  _model.state.aux.mtf02p.present = true;
+  _model.state.aux.mtf02p.packetCount++;
+  _model.state.aux.mtf02p.lastUpdate = now;
+  return true;
+}
+
+bool AuxSensor::parseMtf02pMspByte(uint8_t value, uint32_t now)
+{
+  if (_mtf02pMspFrameIndex == 0)
+  {
+    if (value != '$') return false;
+    _mtf02pMspFrame[0] = value;
+    _mtf02pMspFrameIndex = 1;
+    return false;
+  }
+
+  if (_mtf02pMspFrameIndex == 1)
+  {
+    if (value == 'X')
+    {
+      _mtf02pMspFrame[1] = value;
+      _mtf02pMspFrameIndex = 2;
+    }
+    else
+    {
+      resetMtf02pMspParser();
+      if (value == '$')
+      {
+        _mtf02pMspFrame[0] = value;
+        _mtf02pMspFrameIndex = 1;
+      }
+    }
+    return false;
+  }
+
+  if (_mtf02pMspFrameIndex == 2)
+  {
+    if (value == '<')
+    {
+      _mtf02pMspFrame[2] = value;
+      _mtf02pMspFrameIndex = 3;
+      _model.state.aux.mtf02p.syncByteCount++;
+    }
+    else
+    {
+      resetMtf02pMspParser();
+    }
+    return false;
+  }
+
+  if (_mtf02pMspFrameIndex < MTF02P_MSP_HEADER_LEN)
+  {
+    _mtf02pMspFrame[_mtf02pMspFrameIndex++] = value;
+    _mtf02pMspCrc = crc8DvbS2(_mtf02pMspCrc, value);
+    if (_mtf02pMspFrameIndex == MTF02P_MSP_HEADER_LEN)
+    {
+      const uint16_t payloadLength = readU16Le(&_mtf02pMspFrame[6]);
+      if (payloadLength > MTF02P_MSP_MAX_PAYLOAD_LEN)
+      {
+        _model.state.aux.mtf02p.frameErrorCount++;
+        resetMtf02pMspParser();
+      }
+      else
+      {
+        _mtf02pMspPayloadLength = (uint8_t)payloadLength;
+      }
+    }
+    return false;
+  }
+
+  const uint8_t checksumIndex = MTF02P_MSP_HEADER_LEN + _mtf02pMspPayloadLength;
+  if (_mtf02pMspFrameIndex < checksumIndex)
+  {
+    _mtf02pMspFrame[_mtf02pMspFrameIndex++] = value;
+    _mtf02pMspCrc = crc8DvbS2(_mtf02pMspCrc, value);
+    return false;
+  }
+
+  bool handled = false;
+  if (_mtf02pMspCrc == value)
+  {
+    handled = handleMtf02pMspFrame(now);
+  }
+  else
+  {
+    _model.state.aux.mtf02p.checksumErrorCount++;
+  }
+  resetMtf02pMspParser();
+  return handled;
+}
+
 bool AuxSensor::updateMtf02p(uint32_t now)
 {
   if (!_mtf02pStarted)
@@ -414,7 +592,29 @@ bool AuxSensor::updateMtf02p(uint32_t now)
   while (ESPFC_MTF02P_DEV.available() > 0 && bytesRead < MTF02P_MAX_BYTES_PER_UPDATE)
   {
     _model.state.aux.mtf02p.rxByteCount++;
-    updated = parseMtf02pByte((uint8_t)ESPFC_MTF02P_DEV.read(), now) || updated;
+    const uint8_t value = (uint8_t)ESPFC_MTF02P_DEV.read();
+    if (value == 0xEF) _model.state.aux.mtf02p.micolinkHeadCount++;
+    if (value == 0xFE) _model.state.aux.mtf02p.mavlinkV1HeadCount++;
+    if (value == 0xFD) _model.state.aux.mtf02p.mavlinkV2HeadCount++;
+    if (value == '$') _model.state.aux.mtf02p.mspHeadCount++;
+    const uint8_t sampleIndex = _model.state.aux.mtf02p.rawSampleIndex;
+    _model.state.aux.mtf02p.rawSample[sampleIndex] = value;
+    _model.state.aux.mtf02p.rawSampleIndex = (sampleIndex + 1) % sizeof(_model.state.aux.mtf02p.rawSample);
+    const bool mspUpdated = _mtf02pProtocol != 1 && parseMtf02pMspByte(value, now);
+    const bool micolinkUpdated = _mtf02pProtocol != 2 && parseMtf02pByte(value, now);
+    if (mspUpdated)
+    {
+      _mtf02pProtocol = 2;
+      _model.state.aux.mtf02p.protocol = 2;
+      resetMtf02pParser();
+    }
+    else if (micolinkUpdated)
+    {
+      _mtf02pProtocol = 1;
+      _model.state.aux.mtf02p.protocol = 1;
+      resetMtf02pMspParser();
+    }
+    updated = mspUpdated || micolinkUpdated || updated;
     bytesRead++;
   }
 

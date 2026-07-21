@@ -47,6 +47,8 @@ void setCommonReceiver(ModelConfig& config)
 {
   config.featureMask = FEATURE_RX_SERIAL;
   config.input.serialRxProvider = SERIALRX_CRSF;
+  config.input.minRc = 875;
+  config.input.maxRc = 2125;
   config.input.deadband = 5;
 }
 

@@ -14,6 +14,10 @@ constexpr uint16_t TRAINER_IDLE_MIN_US = 1200;
 constexpr uint16_t TRAINER_IDLE_MAX_US = 1275;
 constexpr uint16_t EXECUTE_HIGH_US = 1700;
 constexpr uint16_t AUX_OFF_US = 1000;
+constexpr uint16_t TRAINER_HEARTBEAT_EDGE_US = 24;
+constexpr uint32_t TRAINER_HEARTBEAT_MAX_EDGE_MS = 150;
+constexpr uint32_t TRAINER_HEARTBEAT_TIMEOUT_MS = 300;
+constexpr uint8_t TRAINER_HEARTBEAT_REQUIRED_EDGES = 3;
 
 DroneProtoTaskCommand decodeTaskSelector(uint16_t value)
 {
@@ -41,6 +45,52 @@ bool isTrainerMarker(uint16_t value)
          (value >= 1575 && value <= 1625) ||
          (value >= 1775 && value <= 1825) ||
          (value >= 1975 && value <= 2025);
+}
+
+void updateTrainerHeartbeat(DroneProtoCommandState& state, uint16_t marker, uint32_t nowMs)
+{
+  state.trainerMarkerUs = marker;
+  if(!isTrainerMarker(marker))
+  {
+    state.trainerHeartbeatReferenceUs = 0;
+    state.trainerHeartbeatLastTransitionMs = 0;
+    state.trainerHeartbeatTransitions = 0;
+    state.trainerHeartbeatFresh = false;
+    return;
+  }
+
+  if(state.trainerHeartbeatReferenceUs == 0)
+  {
+    state.trainerHeartbeatReferenceUs = marker;
+    state.trainerHeartbeatFresh = false;
+    return;
+  }
+
+  const uint16_t delta = marker > state.trainerHeartbeatReferenceUs
+    ? marker - state.trainerHeartbeatReferenceUs
+    : state.trainerHeartbeatReferenceUs - marker;
+  if(delta >= TRAINER_HEARTBEAT_EDGE_US)
+  {
+    const bool edgeOnTime = state.trainerHeartbeatLastTransitionMs != 0 &&
+      nowMs - state.trainerHeartbeatLastTransitionMs <= TRAINER_HEARTBEAT_MAX_EDGE_MS;
+    if(edgeOnTime)
+    {
+      if(state.trainerHeartbeatTransitions < TRAINER_HEARTBEAT_REQUIRED_EDGES)
+        state.trainerHeartbeatTransitions++;
+    }
+    else
+    {
+      state.trainerHeartbeatTransitions = 1;
+    }
+    state.trainerHeartbeatReferenceUs = marker;
+    state.trainerHeartbeatLastTransitionMs = nowMs;
+  }
+
+  const bool recentEdge = state.trainerHeartbeatLastTransitionMs != 0 &&
+    nowMs - state.trainerHeartbeatLastTransitionMs <= TRAINER_HEARTBEAT_TIMEOUT_MS;
+  state.trainerHeartbeatFresh = recentEdge &&
+    state.trainerHeartbeatTransitions >= TRAINER_HEARTBEAT_REQUIRED_EDGES;
+  if(!recentEdge) state.trainerHeartbeatTransitions = 0;
 }
 
 void queueRequest(DroneProtoCommandState& state, DroneProtoTaskCommand command, uint32_t nowMs)
@@ -85,7 +135,9 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
   const uint16_t marker = TRAINER_MARKER_INDEX < channelCount
     ? transportChannels[TRAINER_MARKER_INDEX]
     : 1000;
-  const bool trainerActive = !directActive && channelCount > TRAINER_MARKER_INDEX && isTrainerMarker(marker);
+  updateTrainerHeartbeat(state, marker, nowMs);
+  const bool trainerActive = !directActive && channelCount > TRAINER_MARKER_INDEX &&
+    state.trainerHeartbeatFresh;
   const DroneProtoInputSource nextSource = directActive
     ? DroneProtoInputSource::WIFI_DIRECT
     : (trainerActive ? DroneProtoInputSource::TRAINER_PHONE : DroneProtoInputSource::RADIOMASTER);
@@ -103,7 +155,7 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
   {
     // Phone controls arrive on physical CH11-CH15. Convert AETR transport
     // order into ESP-FC's R/P/Y/T/AUX1 logical order and suppress every other
-    // radio auxiliary command while the fresh CH16 marker is present. CH6
+    // radio auxiliary command while the live CH16 heartbeat is present. CH6
     // remains the three-position flight mode and CH8 remains the positional
     // servo channel; EdgeTX can replace both from trainer TR8/TR7.
     if(channelCount >= TRAINER_ROLL_INDEX + 5)

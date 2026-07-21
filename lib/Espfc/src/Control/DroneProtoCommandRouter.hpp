@@ -44,6 +44,11 @@ struct DroneProtoCommandState
   uint32_t requestSequence = 0;
   uint32_t overwrittenRequests = 0;
   uint16_t functionUs[DRONE_PROTO_FUNCTION_CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
+  uint16_t trainerMarkerUs = 1000;
+  uint16_t trainerHeartbeatReferenceUs = 0;
+  uint32_t trainerHeartbeatLastTransitionMs = 0;
+  uint8_t trainerHeartbeatTransitions = 0;
+  bool trainerHeartbeatFresh = false;
   bool executeInitialized = false;
   bool executeHigh = false;
   bool trainerTaskArmed = false;

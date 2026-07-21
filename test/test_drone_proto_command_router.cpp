@@ -37,6 +37,18 @@ void route(Channels& logical, const Channels& transport, bool directActive,
                                  directActive, nowMs, state);
 }
 
+void sendTrainerHeartbeat(Channels& logical, Channels& transport,
+                          uint32_t startMs, DroneProtoCommandState& state)
+{
+  const uint16_t heartbeat[] = {1230, 1270, 1230, 1270};
+  for(size_t i = 0; i < 4; i++)
+  {
+    transport[15] = heartbeat[i];
+    logical = transport;
+    route(logical, transport, false, startMs + static_cast<uint32_t>(i * 20), state);
+  }
+}
+
 void testNormalMidpointDoesNotTakeOver()
 {
   DroneProtoCommandState state;
@@ -51,6 +63,23 @@ void testNormalMidpointDoesNotTakeOver()
   CHECK(!state.pending.valid);
 }
 
+void testFrozenHighMarkerDoesNotTakeOver()
+{
+  DroneProtoCommandState state;
+  DroneProtoCommandRouter::reset(state);
+  Channels transport = neutralChannels();
+  Channels logical = transport;
+  transport[15] = 2012; // Radio output can remain high after the trainer powers off.
+
+  for(uint32_t nowMs: {10u, 30u, 60u, 120u, 500u})
+  {
+    logical = transport;
+    route(logical, transport, false, nowMs, state);
+    CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
+    CHECK(!state.trainerHeartbeatFresh);
+  }
+}
+
 void testTrainerRemapAndPreservedChannels()
 {
   DroneProtoCommandState state;
@@ -63,10 +92,9 @@ void testTrainerRemapAndPreservedChannels()
   transport[12] = 1300; // Phone throttle.
   transport[13] = 1700; // Phone yaw.
   transport[14] = 2000; // Phone arm.
-  transport[15] = 1250; // Phone heartbeat.
   Channels logical = transport;
 
-  route(logical, transport, false, 20, state);
+  sendTrainerHeartbeat(logical, transport, 20, state);
 
   CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
   CHECK(logical[0] == 1600);
@@ -89,20 +117,17 @@ void testTrainerTaskRequiresHeartbeatAndRearm()
   Channels transport = neutralChannels();
   Channels logical = transport;
 
-  transport[15] = 1300;
-  route(logical, transport, false, 30, state);
-  CHECK(!state.pending.valid);
-
-  transport[15] = 1250;
-  route(logical, transport, false, 40, state);
+  sendTrainerHeartbeat(logical, transport, 20, state);
+  CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
   CHECK(state.trainerTaskArmed);
 
-  transport[15] = 1300;
-  route(logical, transport, false, 50, state);
+  transport[15] = 1280;
+  logical = transport;
+  route(logical, transport, false, 100, state);
   CHECK(state.pending.valid);
   CHECK(state.pending.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
   CHECK(state.pending.source == DroneProtoInputSource::TRAINER_PHONE);
-  CHECK(state.pending.receivedAtMs == 50);
+  CHECK(state.pending.receivedAtMs == 100);
   CHECK(state.pending.sequence == 1);
 
   DroneProtoTaskRequest request;
@@ -110,21 +135,25 @@ void testTrainerTaskRequiresHeartbeatAndRearm()
   CHECK(request.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
   CHECK(!DroneProtoCommandRouter::consumePending(state, request));
 
-  route(logical, transport, false, 60, state);
+  logical = transport;
+  route(logical, transport, false, 120, state);
   CHECK(!state.pending.valid);
   CHECK(state.requestSequence == 1);
 
-  transport[15] = 1250;
-  route(logical, transport, false, 70, state);
-  transport[15] = 1800;
-  route(logical, transport, false, 80, state);
+  transport[15] = 1230;
+  logical = transport;
+  route(logical, transport, false, 140, state);
+  transport[15] = 1780;
+  logical = transport;
+  route(logical, transport, false, 160, state);
   CHECK(state.pending.valid);
   CHECK(state.pending.command == DroneProtoTaskCommand::TASK_1);
   CHECK(state.pending.sequence == 2);
 
-  transport[15] = 1000;
-  route(logical, transport, false, 90, state);
+  logical = transport;
+  route(logical, transport, false, 500, state);
   CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!state.trainerHeartbeatFresh);
 }
 
 void testStartupExecuteHighDoesNotTrigger()
@@ -178,6 +207,7 @@ void testDirectSourceWinsAndUsesTaskEdge()
 int main()
 {
   testNormalMidpointDoesNotTakeOver();
+  testFrozenHighMarkerDoesNotTakeOver();
   testTrainerRemapAndPreservedChannels();
   testTrainerTaskRequiresHeartbeatAndRearm();
   testStartupExecuteHighDoesNotTrigger();
