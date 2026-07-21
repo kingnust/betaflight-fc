@@ -62,6 +62,9 @@ class DroneProtoCommandRouter
                       const uint16_t *transportChannels,
                       size_t channelCount,
                       bool directActive,
+                      const uint16_t *trainerSidebandChannels,
+                      size_t trainerSidebandChannelCount,
+                      bool trainerSidebandFresh,
                       uint32_t nowMs,
                       DroneProtoCommandState& state);
     static bool consumePending(DroneProtoCommandState& state, DroneProtoTaskRequest& request);

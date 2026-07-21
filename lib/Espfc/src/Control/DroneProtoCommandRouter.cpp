@@ -10,6 +10,22 @@ constexpr size_t RADIO_TASK_SELECT_INDEX = 8;   // Physical CH9.
 constexpr size_t RADIO_TASK_EXECUTE_INDEX = 9;  // Physical CH10.
 constexpr size_t TRAINER_ROLL_INDEX = 10;       // Physical CH11 through CH15.
 constexpr size_t TRAINER_MARKER_INDEX = 15;     // Physical CH16.
+constexpr size_t TRAINER_SIDEBAND_ROLL_INDEX = 0;
+constexpr size_t TRAINER_SIDEBAND_PITCH_INDEX = 1;
+constexpr size_t TRAINER_SIDEBAND_THROTTLE_INDEX = 2;
+constexpr size_t TRAINER_SIDEBAND_YAW_INDEX = 3;
+constexpr size_t TRAINER_SIDEBAND_ARM_INDEX = 4;
+constexpr size_t TRAINER_SIDEBAND_TASK_INDEX = 5;
+constexpr size_t TRAINER_SIDEBAND_SERVO_INDEX = 6;
+constexpr size_t TRAINER_SIDEBAND_MODE_INDEX = 7;
+constexpr size_t TRAINER_SIDEBAND_BEEP_INDEX = 8;
+constexpr size_t TRAINER_SIDEBAND_AUX6_INDEX = 9;
+constexpr size_t TRAINER_SIDEBAND_AUX7_INDEX = 10;
+constexpr size_t TRAINER_SIDEBAND_AUX8_INDEX = 11;
+constexpr size_t TRAINER_SIDEBAND_TAKEOVER_INDEX = 12;
+constexpr size_t TRAINER_SIDEBAND_AIR_INDEX = 13;
+constexpr size_t TRAINER_SIDEBAND_RUN_INDEX = 14;
+constexpr size_t TRAINER_SIDEBAND_AUX5_INDEX = 15;
 constexpr uint16_t TRAINER_IDLE_MIN_US = 1200;
 constexpr uint16_t TRAINER_IDLE_MAX_US = 1275;
 constexpr uint16_t EXECUTE_HIGH_US = 1700;
@@ -121,6 +137,9 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
                                     const uint16_t *transportChannels,
                                     size_t channelCount,
                                     bool directActive,
+                                    const uint16_t *trainerSidebandChannels,
+                                    size_t trainerSidebandChannelCount,
+                                    bool trainerSidebandFresh,
                                     uint32_t nowMs,
                                     DroneProtoCommandState& state)
 {
@@ -136,8 +155,10 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
     ? transportChannels[TRAINER_MARKER_INDEX]
     : 1000;
   updateTrainerHeartbeat(state, marker, nowMs);
+  const bool trainerFrameComplete = trainerSidebandChannels != nullptr &&
+    trainerSidebandChannelCount >= 16;
   const bool trainerActive = !directActive && channelCount > TRAINER_MARKER_INDEX &&
-    state.trainerHeartbeatFresh;
+    state.trainerHeartbeatFresh && trainerSidebandFresh && trainerFrameComplete;
   const DroneProtoInputSource nextSource = directActive
     ? DroneProtoInputSource::WIFI_DIRECT
     : (trainerActive ? DroneProtoInputSource::TRAINER_PHONE : DroneProtoInputSource::RADIOMASTER);
@@ -153,22 +174,38 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
 
   if(trainerActive)
   {
-    // Phone controls arrive on physical CH11-CH15. Convert AETR transport
-    // order into ESP-FC's R/P/Y/T/AUX1 logical order and suppress every other
-    // radio auxiliary command while the live CH16 heartbeat is present. CH6
-    // remains the three-position flight mode and CH8 remains the positional
-    // servo channel; EdgeTX can replace both from trainer TR8/TR7.
-    if(channelCount >= TRAINER_ROLL_INDEX + 5)
+    // Trainer takeover is atomic. RadioMaster still supplies the independent
+    // live heartbeat and receiver failsafe, but every logical RC value comes
+    // from the same complete phone frame. If either path is stale, this block
+    // is skipped and the already-mapped RadioMaster frame remains untouched.
+    for(size_t i = 0; i < channelCount; i++) logicalChannels[i] = AUX_OFF_US;
+    const auto copySideband = [&](size_t logicalIndex, size_t sidebandIndex)
     {
-      logicalChannels[0] = transportChannels[10];
-      logicalChannels[1] = transportChannels[11];
-      logicalChannels[2] = transportChannels[13];
-      logicalChannels[3] = transportChannels[12];
-      logicalChannels[4] = transportChannels[14];
+      if(logicalIndex < channelCount && sidebandIndex < trainerSidebandChannelCount)
+        logicalChannels[logicalIndex] = trainerSidebandChannels[sidebandIndex];
+    };
+    copySideband(0, TRAINER_SIDEBAND_ROLL_INDEX);
+    copySideband(1, TRAINER_SIDEBAND_PITCH_INDEX);
+    copySideband(2, TRAINER_SIDEBAND_YAW_INDEX);
+    copySideband(3, TRAINER_SIDEBAND_THROTTLE_INDEX);
+    copySideband(4, TRAINER_SIDEBAND_ARM_INDEX);          // AUX1: arm.
+    copySideband(5, TRAINER_SIDEBAND_MODE_INDEX);         // AUX2: flight mode.
+    copySideband(6, TRAINER_SIDEBAND_AIR_INDEX);          // AUX3: air mode.
+    copySideband(7, TRAINER_SIDEBAND_SERVO_INDEX);        // AUX4: servo.
+    copySideband(8, TRAINER_SIDEBAND_TASK_INDEX);         // AUX5: task selector.
+    copySideband(9, TRAINER_SIDEBAND_RUN_INDEX);          // AUX6: task run.
+    copySideband(10, TRAINER_SIDEBAND_AUX5_INDEX);        // AUX7: phone Aux5.
+    copySideband(11, TRAINER_SIDEBAND_AUX6_INDEX);        // AUX8: phone Aux6.
+    copySideband(12, TRAINER_SIDEBAND_AUX7_INDEX);        // AUX9: phone Aux7.
+    copySideband(13, TRAINER_SIDEBAND_AUX8_INDEX);        // AUX10: phone Aux8.
+    copySideband(14, TRAINER_SIDEBAND_BEEP_INDEX);        // AUX11: beeper.
+    copySideband(15, TRAINER_SIDEBAND_TAKEOVER_INDEX);    // AUX12: takeover.
+
+    for(size_t i = 0; i < DRONE_PROTO_FUNCTION_CHANNELS; i++)
+    {
+      const size_t logicalIndex = 10 + i;
+      state.functionUs[i] = logicalIndex < channelCount ? logicalChannels[logicalIndex] : AUX_OFF_US;
     }
-    for(size_t i = 5; i < channelCount; i++) logicalChannels[i] = AUX_OFF_US;
-    if(channelCount > 5) logicalChannels[5] = transportChannels[5];
-    if(channelCount > 7) logicalChannels[7] = transportChannels[7];
 
     state.selected = decodeTrainerTask(marker);
     if(marker >= TRAINER_IDLE_MIN_US && marker < TRAINER_IDLE_MAX_US)

@@ -2037,6 +2037,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(Device::DroneProtoDirectRc::initError());
     s.print(F(" active="));
     s.print(Device::DroneProtoDirectRc::active(nowMs) ? 1 : 0);
+    s.print(F(" trainer_aux="));
+    s.print(Device::DroneProtoDirectRc::trainerSidebandActive(nowMs) ? 1 : 0);
     s.print(F(" age="));
     s.print(Device::DroneProtoDirectRc::ageMs(nowMs));
     s.print(F("ms rx="));

@@ -29,6 +29,13 @@ constexpr uint16_t kMinUs = 988;
 constexpr uint16_t kMidUs = 1500;
 constexpr uint16_t kMaxUs = 2012;
 
+enum class PacketMode : uint8_t
+{
+  NONE,
+  TRAINER_SIDEBAND,
+  DIRECT,
+};
+
 struct __attribute__((packed)) DirectRcPacket
 {
   uint32_t magic;
@@ -48,7 +55,7 @@ static_assert(sizeof(DirectRcPacket) == 52, "Direct RC packet layout changed");
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 bool s_ready = false;
 int32_t s_initError = 0;
-bool s_enabled = false;
+PacketMode s_mode = PacketMode::NONE;
 bool s_newFrame = false;
 uint16_t s_channels[kPacketChannels] = {};
 uint32_t s_lastMs = 0;
@@ -97,6 +104,17 @@ bool validChannelValues(const DirectRcPacket& packet)
     }
   }
   return true;
+}
+
+bool decodePacketMode(uint8_t flags, PacketMode& mode)
+{
+  switch(flags)
+  {
+    case 0x00: mode = PacketMode::NONE; return true;
+    case 0x03: mode = PacketMode::DIRECT; return true;
+    case 0x04: mode = PacketMode::TRAINER_SIDEBAND; return true;
+    default: return false;
+  }
 }
 
 bool isFreshTimestamp(uint32_t nowMs, uint32_t lastMs)
@@ -153,8 +171,9 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len)
     return;
   }
 
-  const bool enabled = (packet.flags & 0x03) == 0x03;
-  if(enabled && !validChannelValues(packet))
+  PacketMode packetMode = PacketMode::NONE;
+  if(!decodePacketMode(packet.flags, packetMode) ||
+     (packetMode != PacketMode::NONE && !validChannelValues(packet)))
   {
     portENTER_CRITICAL_ISR(&s_mux);
     ++s_badValue;
@@ -190,8 +209,8 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len)
     }
   }
   s_hasSeq = true;
-  s_enabled = enabled;
-  if(enabled)
+  s_mode = packetMode;
+  if(packetMode != PacketMode::NONE)
   {
     for(size_t i = 0; i < kPacketChannels; ++i)
     {
@@ -199,12 +218,13 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len)
     }
     s_lastMs = nowMs;
     s_lastSeq = packet.sequence;
-    s_newFrame = true;
+    s_newFrame = packetMode == PacketMode::DIRECT;
     ++s_valid;
   }
   else
   {
-    s_enabled = false;
+    s_mode = PacketMode::NONE;
+    s_newFrame = false;
     setSafeChannels();
     s_lastMs = nowMs;
     s_lastSeq = packet.sequence;
@@ -278,13 +298,24 @@ bool DroneProtoDirectRc::consumeNewFrame()
 
 bool DroneProtoDirectRc::active(uint32_t nowMs)
 {
-  bool enabled = false;
+  PacketMode mode = PacketMode::NONE;
   uint32_t last = 0;
   portENTER_CRITICAL(&s_mux);
-  enabled = s_enabled;
+  mode = s_mode;
   last = s_lastMs;
   portEXIT_CRITICAL(&s_mux);
-  return s_ready && enabled && isFreshTimestamp(nowMs, last);
+  return s_ready && mode == PacketMode::DIRECT && isFreshTimestamp(nowMs, last);
+}
+
+bool DroneProtoDirectRc::trainerSidebandActive(uint32_t nowMs)
+{
+  PacketMode mode = PacketMode::NONE;
+  uint32_t last = 0;
+  portENTER_CRITICAL(&s_mux);
+  mode = s_mode;
+  last = s_lastMs;
+  portEXIT_CRITICAL(&s_mux);
+  return s_ready && mode == PacketMode::TRAINER_SIDEBAND && isFreshTimestamp(nowMs, last);
 }
 
 void DroneProtoDirectRc::getChannels(uint16_t *data, size_t len)

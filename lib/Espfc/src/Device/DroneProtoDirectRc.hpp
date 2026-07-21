@@ -14,6 +14,7 @@ public:
   static bool begin();
   static bool consumeNewFrame();
   static bool active(uint32_t nowMs = millis());
+  static bool trainerSidebandActive(uint32_t nowMs = millis());
   static void getChannels(uint16_t *data, size_t len);
 
   static bool ready();

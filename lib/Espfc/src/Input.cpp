@@ -175,11 +175,18 @@ void FAST_CODE_ATTR Input::processInputs()
   }
 
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
+  uint16_t trainerSidebandChannels[INPUT_CHANNELS] = {};
+  const bool trainerSidebandFresh = Device::DroneProtoDirectRc::trainerSidebandActive();
+  if(trainerSidebandFresh)
+  {
+    Device::DroneProtoDirectRc::getChannels(trainerSidebandChannels, INPUT_CHANNELS);
+  }
   Control::DroneProtoCommandRouter::route(logicalChannels, channels, _model.state.input.channelCount,
-    directActive, millis(), _model.state.commands);
+    directActive, trainerSidebandChannels, INPUT_CHANNELS, trainerSidebandFresh,
+    millis(), _model.state.commands);
 #else
   Control::DroneProtoCommandRouter::route(logicalChannels, channels, _model.state.input.channelCount,
-    false, millis(), _model.state.commands);
+    false, nullptr, 0, false, millis(), _model.state.commands);
 #endif
 
   _model.state.input.channelsValid = true;
