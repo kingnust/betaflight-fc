@@ -7,7 +7,7 @@ namespace Control {
 namespace {
 
 constexpr size_t RADIO_TASK_SELECT_INDEX = 8;   // Physical CH9.
-constexpr size_t RADIO_TASK_EXECUTE_INDEX = 9;  // Physical CH10.
+constexpr size_t RADIO_TASK_EXECUTE_INDEX = 7;  // Physical CH8.
 constexpr size_t TRAINER_ROLL_INDEX = 10;       // Physical CH11 through CH15.
 constexpr size_t TRAINER_MARKER_INDEX = 15;     // Physical CH16.
 constexpr size_t TRAINER_SIDEBAND_ROLL_INDEX = 0;
@@ -191,9 +191,9 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
     copySideband(4, TRAINER_SIDEBAND_ARM_INDEX);          // AUX1: arm.
     copySideband(5, TRAINER_SIDEBAND_MODE_INDEX);         // AUX2: flight mode.
     copySideband(6, TRAINER_SIDEBAND_AIR_INDEX);          // AUX3: air mode.
-    copySideband(7, TRAINER_SIDEBAND_SERVO_INDEX);        // AUX4: servo.
+    copySideband(7, TRAINER_SIDEBAND_RUN_INDEX);          // AUX4: task run.
     copySideband(8, TRAINER_SIDEBAND_TASK_INDEX);         // AUX5: task selector.
-    copySideband(9, TRAINER_SIDEBAND_RUN_INDEX);          // AUX6: task run.
+    copySideband(9, TRAINER_SIDEBAND_SERVO_INDEX);        // AUX6: servo.
     copySideband(10, TRAINER_SIDEBAND_AUX5_INDEX);        // AUX7: phone Aux5.
     copySideband(11, TRAINER_SIDEBAND_AUX6_INDEX);        // AUX8: phone Aux6.
     copySideband(12, TRAINER_SIDEBAND_AUX7_INDEX);        // AUX9: phone Aux7.

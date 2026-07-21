@@ -93,7 +93,7 @@ void testHeartbeatWithoutPhoneFrameKeepsRadioMaster()
   DroneProtoCommandRouter::reset(state);
   Channels transport = neutralChannels();
   transport[5] = 2012;  // CH6 flight mode.
-  transport[7] = 1750;  // CH8 servo.
+  transport[7] = 1750;  // CH8 task execution.
   transport[10] = 1600; // Phone roll.
   transport[11] = 1400; // Phone pitch.
   transport[12] = 1300; // Phone throttle.
@@ -152,9 +152,9 @@ void testTrainerFullPhoneOverride()
   CHECK(logical[4] == 2012);
   CHECK(logical[5] == 2012);
   CHECK(logical[6] == 2012);
-  CHECK(logical[7] == 1660);
+  CHECK(logical[7] == 2012);
   CHECK(logical[8] == 1250);
-  CHECK(logical[9] == 2012);
+  CHECK(logical[9] == 1660);
   CHECK(logical[10] == 2012);
   CHECK(logical[11] == 988);
   CHECK(logical[12] == 2012);
@@ -292,7 +292,7 @@ void testStartupExecuteHighDoesNotTrigger()
   Channels transport = neutralChannels();
   Channels logical = transport;
   transport[8] = 1200;
-  transport[9] = 2000;
+  transport[7] = 2000;
 
   route(logical, transport, false, 100, state);
 
@@ -300,9 +300,9 @@ void testStartupExecuteHighDoesNotTrigger()
   CHECK(state.selected == DroneProtoTaskCommand::GO_TO_PRESET_1);
   CHECK(!state.pending.valid);
 
-  transport[9] = 1000;
+  transport[7] = 1000;
   route(logical, transport, false, 110, state);
-  transport[9] = 2000;
+  transport[7] = 2000;
   route(logical, transport, false, 120, state);
   CHECK(state.pending.valid);
   CHECK(state.pending.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
@@ -317,14 +317,14 @@ void testDirectSourceWinsAndUsesTaskEdge()
   Channels logical = transport;
   transport[15] = 1250;
   transport[8] = 1600;
-  transport[9] = 1000;
+  transport[7] = 1000;
 
   route(logical, transport, true, 130, state);
   CHECK(state.source == DroneProtoInputSource::WIFI_DIRECT);
   CHECK(state.selected == DroneProtoTaskCommand::RETURN_HOME);
   CHECK(!state.pending.valid);
 
-  transport[9] = 2000;
+  transport[7] = 2000;
   route(logical, transport, true, 140, state);
   CHECK(state.pending.valid);
   CHECK(state.pending.command == DroneProtoTaskCommand::RETURN_HOME);
