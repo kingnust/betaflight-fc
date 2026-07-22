@@ -2592,6 +2592,93 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     }
   }
 #endif
+  else if(strcmp_P(cmd.args[0], PSTR("telemetry")) == 0)
+  {
+    const uint32_t nowMs = millis();
+    const bool rxHealthy = _model.state.input.channelsValid && !_model.state.input.rxLoss && !_model.state.input.rxFailSafe;
+    s.print(F("source="));
+    s.print(Control::DroneProtoCommandRouter::sourceName(_model.state.commands.source));
+    s.print(F(" trainer_request="));
+    s.print(_model.state.commands.trainerTakeoverRequested ? 1 : 0);
+    s.print(F(" trainer_active="));
+    s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
+    s.print(F(" trainer_link="));
+    s.print(_model.state.commands.trainerLinkQualified ? 1 : 0);
+    s.print(F(" arm_flags=0x"));
+    s.print(_model.state.mode.armingDisabledFlags, HEX);
+    s.print(F(" rx_ok="));
+    s.print(rxHealthy ? 1 : 0);
+    s.print(F(" rx_frames="));
+    s.print(_model.state.input.frameCount);
+    s.print(F(" flow_q="));
+    s.print(_model.state.aux.mtf02p.flowQuality);
+    s.print(F(" flow_age_ms="));
+    s.print(_model.state.aux.mtf02p.lastUpdate ? nowMs - _model.state.aux.mtf02p.lastUpdate : UINT32_MAX);
+    s.print(F(" range_mm="));
+    s.print(_model.state.aux.range.distanceMm);
+    s.print(F(" altitude_m="));
+    s.print(_model.state.altitude.height, 2);
+    s.print(F(" vario_mps="));
+    s.print(_model.state.altitude.vario, 2);
+    s.print(F(" servo_us="));
+    s.print(Device::DroneProtoServo::currentUs());
+    s.print(F(" servo_deg="));
+    s.print(Device::DroneProtoServo::currentAngleDeg());
+    s.print(F(" failsafe="));
+    s.print((int)_model.state.failsafe.phase);
+    s.print(F(" poshold="));
+    s.print(_model.state.positionHold.active ? 1 : 0);
+    s.print(F(" release="));
+    s.println(Control::positionHoldReleaseName(_model.state.positionHold.release));
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("events")) == 0)
+  {
+    auto& log = _model.state.eventLog;
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("clear")) == 0)
+    {
+      log.next = 0;
+      log.count = 0;
+      log.dropped = 0;
+      s.println(F("events cleared"));
+    }
+    else
+    {
+      s.print(F("events count="));
+      s.print(log.count);
+      s.print(F(" overwritten="));
+      s.println(log.dropped);
+      const size_t oldest = (log.next + Diagnostics::EVENT_LOG_CAPACITY - log.count) % Diagnostics::EVENT_LOG_CAPACITY;
+      for(size_t i = 0; i < log.count; i++)
+      {
+        const auto& event = log.entries[(oldest + i) % Diagnostics::EVENT_LOG_CAPACITY];
+        s.print(event.timeMs);
+        s.print(F("ms "));
+        s.print(Diagnostics::DroneProtoEventLog::typeName(event.type));
+        if(event.type == Diagnostics::EventType::SAMPLE)
+        {
+          s.print(F(" alt_cm="));
+          s.print(event.a);
+          s.print(F(" servo_us="));
+          s.print(event.b);
+          s.print(F(" rx_ok="));
+          s.print(event.c & 1);
+          s.print(F(" poshold="));
+          s.print((event.c >> 1) & 1);
+          s.print(F(" flow_q="));
+          s.println((event.c >> 8) & 0xff);
+        }
+        else
+        {
+          s.print(F(" a="));
+          s.print(event.a);
+          s.print(F(" b="));
+          s.print(event.b);
+          s.print(F(" c="));
+          s.println(event.c);
+        }
+      }
+    }
+  }
   else if(strcmp_P(cmd.args[0], PSTR("logs")) == 0)
   {
     s.print(_model.logger.c_str());

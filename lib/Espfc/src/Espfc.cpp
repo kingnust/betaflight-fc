@@ -11,7 +11,7 @@ namespace Espfc {
 
 Espfc::Espfc():
   _hardware{_model}, _controller{_model}, _telemetry{_model}, _input{_model, _telemetry}, _actuator{_model}, _sensor{_model},
-  _mixer{_model}, _blackbox{_model}, _buzzer{_model}, _serial{_model, _telemetry}
+  _mixer{_model}, _blackbox{_model}, _buzzer{_model}, _eventLog{_model}, _serial{_model, _telemetry}
   {}
 
 int Espfc::load()
@@ -57,6 +57,7 @@ int Espfc::begin()
   _blackbox.begin();    // requires _serial.begin(), _actuator.begin()
   DRONE_PROTO_DEBUG_LINE("after blackbox.begin, before buzzer.begin");
   _buzzer.begin();
+  _eventLog.begin();
   DRONE_PROTO_DEBUG_LINE("after buzzer.begin");
 
   _model.state.buzzer.push(BUZZER_SYSTEM_INIT);
@@ -120,6 +121,7 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   Device::DroneProtoServo::updateInput(_model.state.input.us, _model.state.input.channelCount,
     _model.state.input.channelsValid && !_model.state.input.rxLoss && !_model.state.input.rxFailSafe);
   #endif
+  _eventLog.update(millis());
   _model.state.stats.update();
 
   return 1;

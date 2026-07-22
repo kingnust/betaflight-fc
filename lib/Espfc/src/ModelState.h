@@ -10,6 +10,7 @@
 #include "Control/Pid.h"
 #include "Control/DroneProtoCommandRouter.hpp"
 #include "Control/OpticalFlowPositionHold.h"
+#include "Diagnostics/DroneProtoEventLog.hpp"
 #include "Kalman.h"
 #include "Utils/Filter.h"
 #include "Utils/Timer.h"
@@ -587,6 +588,7 @@ struct ModelState
 
   AltitudeState altitude;
   Control::OpticalFlowPositionHoldState positionHold;
+  Diagnostics::EventLogState eventLog;
 
   SetpointState setpoint;
   Control::Pid innerPid[AXIS_COUNT_RPYT];

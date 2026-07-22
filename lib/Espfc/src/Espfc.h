@@ -11,6 +11,7 @@
 #include "Output/Mixer.h"
 #include "Blackbox/Blackbox.h"
 #include "Connect/Buzzer.hpp"
+#include "Diagnostics/DroneProtoEventLog.hpp"
 
 namespace Espfc {
 
@@ -57,6 +58,7 @@ class Espfc
     Output::Mixer _mixer;
     Blackbox::Blackbox _blackbox;
     Connect::Buzzer _buzzer;
+    Diagnostics::DroneProtoEventLog _eventLog;
     SerialManager _serial;
     uint32_t _loop_next;
 };
