@@ -31,7 +31,8 @@ int InputCRSF::begin(Device::SerialDevice * serial, TelemetryManager * telemetry
   _diagnostics = CrsfInputDiagnostics{};
   _diagnostics.activeBaud = CRSF_BAUD_DEFAULT;
   std::fill_n((uint8_t*)&_frame, sizeof(_frame), 0);
-  std::fill_n(_channels, CHANNELS, 0);
+  std::fill_n(_channels, CHANNELS, 1500);
+  _channels[2] = 988;
   return 1;
 }
 
@@ -66,6 +67,19 @@ InputStatus FAST_CODE_ATTR InputCRSF::update()
   }
 
   const uint32_t nowMs = millis();
+  if(_diagnostics.baudLocked && nowMs - _diagnostics.lastValidFrameMs >= BAUD_LOCK_TIMEOUT_MS)
+  {
+    // USB resets and receiver power-up order can interrupt a previously locked
+    // UART. Return to the known CRSF default and resume normal baud probing.
+    _diagnostics.baudLocked = false;
+    _diagnostics.lockLosses++;
+    _diagnostics.activeBaud = CRSF_BAUD_DEFAULT;
+    _validFramesAtBaud = 0;
+    _lastBaudProbeMs = nowMs;
+    reset();
+    _serial->updateBaudRate(CRSF_BAUD_DEFAULT);
+  }
+
   if(!_diagnostics.baudLocked && nowMs - _lastBaudProbeMs >= BAUD_PROBE_INTERVAL_MS)
   {
     _diagnostics.activeBaud = _diagnostics.activeBaud == CRSF_BAUD_DEFAULT
@@ -83,16 +97,15 @@ InputStatus FAST_CODE_ATTR InputCRSF::update()
 
 uint16_t FAST_CODE_ATTR InputCRSF::get(uint8_t i) const
 {
-  return _channels[i];
+  return i < CHANNELS ? _channels[i] : 1500;
 }
 
 void FAST_CODE_ATTR InputCRSF::get(uint16_t * data, size_t len) const
 {
-  const uint16_t * src = _channels;
-  while(len--)
-  {
-    *data++ = *src++;
-  }
+  if(data == nullptr) return;
+  const size_t copyLen = std::min(len, CHANNELS);
+  std::copy_n(_channels, copyLen, data);
+  std::fill_n(data + copyLen, len - copyLen, 1500);
 }
 
 size_t InputCRSF::getChannelCount() const { return CHANNELS; }

@@ -24,7 +24,7 @@ enum class DroneProtoTaskCommand : uint8_t
   TASK_2,
 };
 
-constexpr size_t DRONE_PROTO_FUNCTION_CHANNELS = 6;
+constexpr size_t DRONE_PROTO_FUNCTION_CHANNELS = 16;
 
 struct DroneProtoTaskRequest
 {
@@ -33,7 +33,10 @@ struct DroneProtoTaskRequest
   DroneProtoInputSource source = DroneProtoInputSource::RADIOMASTER;
   uint32_t sequence = 0;
   uint32_t receivedAtMs = 0;
-  uint16_t functionUs[DRONE_PROTO_FUNCTION_CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
+  uint16_t functionUs[DRONE_PROTO_FUNCTION_CHANNELS] = {
+    1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500,
+    1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500
+  };
 };
 
 struct DroneProtoCommandState
@@ -43,15 +46,43 @@ struct DroneProtoCommandState
   DroneProtoTaskRequest pending;
   uint32_t requestSequence = 0;
   uint32_t overwrittenRequests = 0;
-  uint16_t functionUs[DRONE_PROTO_FUNCTION_CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
-  uint16_t trainerMarkerUs = 1000;
+  uint16_t functionUs[DRONE_PROTO_FUNCTION_CHANNELS] = {
+    1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500,
+    1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500
+  };
+  uint16_t trainerSafetyUs = 1000;
+  bool trainerSafetyRaw = false;
+  bool trainerSafetyEnabled = false;
+  bool trainerSafetyInitialized = false;
+  bool trainerSafetyCandidate = false;
+  uint32_t trainerSafetyCandidateSinceMs = 0;
+  bool trainerSafetyRising = false;
+  uint16_t radioArmUs = 1000;
+  bool radioArmRaw = false;
+  bool radioArmDebounced = false;
+  bool radioArmInitialized = false;
+  bool radioArmCandidate = false;
+  uint32_t radioArmCandidateSinceMs = 0;
+  uint16_t trainerTakeoverUs = 1000;
+  uint16_t trainerArmUs = 1000;
+  uint16_t trainerHeartbeatUs = 1000;
   uint16_t trainerHeartbeatReferenceUs = 0;
   uint32_t trainerHeartbeatLastTransitionMs = 0;
   uint8_t trainerHeartbeatTransitions = 0;
   bool trainerHeartbeatFresh = false;
+  bool trainerLinkQualified = false;
+  bool trainerArmLowStable = false;
+  uint32_t trainerArmLowSinceMs = 0;
+  bool trainerTakeoverRequested = false;
+  bool trainerTakeoverPending = false;
+  bool trainerTakeoverTimedOut = false;
+  uint32_t trainerTakeoverPendingSinceMs = 0;
+  bool trainerTakeoverLatched = false;
+  bool trainerTakeoverBlockedArmed = false;
+  bool trainerTakeoverBlockedTrainerArmed = false;
+  bool radioArmReleaseRequired = false;
   bool executeInitialized = false;
   bool executeHigh = false;
-  bool trainerTaskArmed = false;
 };
 
 class DroneProtoCommandRouter

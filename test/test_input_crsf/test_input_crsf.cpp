@@ -10,6 +10,31 @@ using namespace Espfc::Device;
 using namespace Espfc::Rc;
 using namespace fakeit;
 
+class CrsfTestSerial: public SerialDevice
+{
+  public:
+    void begin(const SerialDeviceConfig&) override {}
+    void updateBaudRate(int baud) override
+    {
+      lastBaud = baud;
+      baudUpdates++;
+    }
+    int available() override { return 0; }
+    int read() override { return -1; }
+    size_t readMany(uint8_t*, size_t) override { return 0; }
+    int peek() override { return -1; }
+    void flush() override {}
+    size_t write(uint8_t) override { return 1; }
+    size_t write(const uint8_t*, size_t len) override { return len; }
+    int availableForWrite() override { return 64; }
+    bool isTxFifoEmpty() override { return true; }
+    bool isSoft() const override { return false; }
+    operator bool() const override { return true; }
+
+    int lastBaud = 0;
+    uint32_t baudUpdates = 0;
+};
+
 void test_input_crsf_rc_valid()
 {
   InputCRSF input;
@@ -64,6 +89,50 @@ void test_input_crsf_rc_valid()
   TEST_ASSERT_EQUAL_UINT32(2, second.validFrames);
   TEST_ASSERT_EQUAL_UINT32(2, second.rcFrames);
   TEST_ASSERT_TRUE(second.baudLocked);
+}
+
+void test_input_crsf_recovers_stale_baud_lock()
+{
+  ArduinoFakeReset();
+  uint32_t nowMs = 0;
+  When(Method(ArduinoFake(), micros)).AlwaysReturn(0);
+  When(Method(ArduinoFake(), millis)).AlwaysDo([&nowMs]() { return nowMs; });
+
+  CrsfTestSerial serial;
+  InputCRSF input;
+  input.begin(&serial, nullptr);
+
+  const uint8_t data[] = {
+    0xC8, 0x18, 0x16, 0xE0, 0x03, 0xDF, 0xD9, 0xC0, 0xF7, 0x8B, 0x5F, 0x94, 0xAF,
+    0x7C, 0xE5, 0x2B, 0x5F, 0xF9, 0xCA, 0x07, 0x00, 0x00, 0x4C, 0x7C, 0xE2, 0x23
+  };
+
+  nowMs = 10;
+  CrsfMessage frame;
+  memset(&frame, 0, sizeof(frame));
+  for(size_t frameIndex = 0; frameIndex < 2; frameIndex++)
+  {
+    for(size_t i = 0; i < sizeof(data); i++) input.parse(frame, data[i]);
+  }
+
+  TEST_ASSERT_TRUE(InputCRSF::diagnostics().baudLocked);
+  TEST_ASSERT_EQUAL(INPUT_RECEIVED, input.update());
+
+  nowMs = 1010;
+  TEST_ASSERT_EQUAL(INPUT_IDLE, input.update());
+  const CrsfInputDiagnostics& recovered = InputCRSF::diagnostics();
+  TEST_ASSERT_FALSE(recovered.baudLocked);
+  TEST_ASSERT_EQUAL_UINT32(1, recovered.lockLosses);
+  TEST_ASSERT_EQUAL_UINT32(420000, recovered.activeBaud);
+  TEST_ASSERT_EQUAL_UINT32(1, serial.baudUpdates);
+  TEST_ASSERT_EQUAL(420000, serial.lastBaud);
+
+  nowMs = 2210;
+  TEST_ASSERT_EQUAL(INPUT_IDLE, input.update());
+  TEST_ASSERT_EQUAL_UINT32(400000, InputCRSF::diagnostics().activeBaud);
+  TEST_ASSERT_EQUAL_UINT32(1, InputCRSF::diagnostics().baudSwitches);
+  TEST_ASSERT_EQUAL_UINT32(2, serial.baudUpdates);
+  TEST_ASSERT_EQUAL(400000, serial.lastBaud);
 }
 
 void test_input_crsf_bad_crc_diagnostic()
@@ -739,6 +808,7 @@ int main(int argc, char **argv)
 {
   UNITY_BEGIN();
   RUN_TEST(test_input_crsf_rc_valid);
+  RUN_TEST(test_input_crsf_recovers_stale_baud_lock);
   RUN_TEST(test_input_crsf_bad_crc_diagnostic);
   RUN_TEST(test_input_crsf_rc_valid_no_payload);
   RUN_TEST(test_input_crsf_rc_prefix);

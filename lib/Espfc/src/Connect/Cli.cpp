@@ -113,7 +113,9 @@ void printCrsfRxStatus(Model& model, Stream& stream, uint32_t now)
   stream.print(F(" locked="));
   stream.print(d.baudLocked ? 1 : 0);
   stream.print(F(" switches="));
-  stream.println(d.baudSwitches);
+  stream.print(d.baudSwitches);
+  stream.print(F(" lock_losses="));
+  stream.println(d.lockLosses);
 
   stream.print(F("              bytes="));
   stream.print(d.rawBytes);
@@ -1977,12 +1979,30 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" source="));
     s.print(Control::DroneProtoCommandRouter::sourceName(_model.state.commands.source));
     s.println();
-    s.print(F("     trainer: heartbeat="));
+    s.print(F("     trainer: safety_ch11="));
+    s.print(_model.state.commands.trainerSafetyUs);
+    s.print(F(" enabled="));
+    s.print(_model.state.commands.trainerSafetyEnabled ? 1 : 0);
+    s.print(F(" takeover="));
+    s.print(_model.state.commands.trainerTakeoverUs);
+    s.print(F(" phone_arm="));
+    s.print(_model.state.commands.trainerArmUs);
+    s.print(F(" requested="));
+    s.print(_model.state.commands.trainerTakeoverRequested ? 1 : 0);
+    s.print(F(" latched="));
+    s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
+    s.print(F(" blocked_armed="));
+    s.print(_model.state.commands.trainerTakeoverBlockedArmed ? 1 : 0);
+    s.print(F(" blocked_phone_arm="));
+    s.print(_model.state.commands.trainerTakeoverBlockedTrainerArmed ? 1 : 0);
+    s.print(F(" switch_edge="));
+    s.print(_model.state.commands.trainerSafetyRising ? 1 : 0);
+    s.print(F(" arm_release="));
+    s.print(_model.state.commands.radioArmReleaseRequired ? 1 : 0);
+    s.print(F(" heartbeat="));
     s.print(_model.state.commands.trainerHeartbeatFresh ? 1 : 0);
-    s.print(F(" edges="));
-    s.print(_model.state.commands.trainerHeartbeatTransitions);
-    s.print(F(" marker="));
-    s.print(_model.state.commands.trainerMarkerUs);
+    s.print(F(" hb_us="));
+    s.print(_model.state.commands.trainerHeartbeatUs);
     s.print(F(" age="));
     printAge(s, _model.state.commands.trainerHeartbeatLastTransitionMs, nowMs);
     s.println();
@@ -2002,7 +2022,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.print(nowMs - _model.state.commands.pending.receivedAtMs);
       s.print(F("ms"));
     }
-    s.print(F(" ch11-16="));
+    s.print(F(" phone_ch1-16="));
     for(size_t i = 0; i < Control::DRONE_PROTO_FUNCTION_CHANNELS; i++)
     {
       if(i) s.print(',');
@@ -2382,9 +2402,39 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.commands.requestSequence);
     s.print(F(" trainer_hb="));
     s.print(_model.state.commands.trainerHeartbeatFresh ? 1 : 0);
-    s.print(F(" marker="));
-    s.print(_model.state.commands.trainerMarkerUs);
-    s.print(F(" ch11-16="));
+    s.print(F(" hb_edges="));
+    s.print(_model.state.commands.trainerHeartbeatTransitions);
+    s.print(F(" link_qualified="));
+    s.print(_model.state.commands.trainerLinkQualified ? 1 : 0);
+    s.print(F(" safety_ch11="));
+    s.print(_model.state.commands.trainerSafetyUs);
+    s.print(F(" safety_raw="));
+    s.print(_model.state.commands.trainerSafetyRaw ? 1 : 0);
+    s.print(F(" safety_stable="));
+    s.print(_model.state.commands.trainerSafetyEnabled ? 1 : 0);
+    s.print(F(" radio_arm_raw="));
+    s.print(_model.state.commands.radioArmRaw ? 1 : 0);
+    s.print(F(" radio_arm_stable="));
+    s.print(_model.state.commands.radioArmDebounced ? 1 : 0);
+    s.print(F(" takeover="));
+    s.print(_model.state.commands.trainerTakeoverUs);
+    s.print(F(" phone_arm="));
+    s.print(_model.state.commands.trainerArmUs);
+    s.print(F(" request_pending="));
+    s.print(_model.state.commands.trainerTakeoverPending ? 1 : 0);
+    s.print(F(" request_timeout="));
+    s.print(_model.state.commands.trainerTakeoverTimedOut ? 1 : 0);
+    s.print(F(" latched="));
+    s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
+    s.print(F(" blocked_armed="));
+    s.print(_model.state.commands.trainerTakeoverBlockedArmed ? 1 : 0);
+    s.print(F(" blocked_phone_arm="));
+    s.print(_model.state.commands.trainerTakeoverBlockedTrainerArmed ? 1 : 0);
+    s.print(F(" arm_release="));
+    s.print(_model.state.commands.radioArmReleaseRequired ? 1 : 0);
+    s.print(F(" hb_us="));
+    s.print(_model.state.commands.trainerHeartbeatUs);
+    s.print(F(" phone_ch1-16="));
     for(size_t i = 0; i < Control::DRONE_PROTO_FUNCTION_CHANNELS; i++)
     {
       if(i) s.print(',');

@@ -176,7 +176,8 @@ void FAST_CODE_ATTR Input::processInputs()
 
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
   uint16_t trainerSidebandChannels[INPUT_CHANNELS] = {};
-  const bool trainerSidebandFresh = Device::DroneProtoDirectRc::trainerSidebandActive();
+  const bool trainerSidebandFresh = Device::DroneProtoDirectRc::trainerSidebandActive() &&
+    !_model.state.input.rxLoss && !_model.state.input.rxFailSafe;
   if(trainerSidebandFresh)
   {
     Device::DroneProtoDirectRc::getChannels(trainerSidebandChannels, INPUT_CHANNELS);

@@ -15,6 +15,7 @@ struct CrsfInputDiagnostics
 {
     uint32_t activeBaud = 420000;
     uint32_t baudSwitches = 0;
+    uint32_t lockLosses = 0;
     uint32_t rawBytes = 0;
     uint32_t syncBytes = 0;
     uint32_t validFrames = 0;
@@ -67,6 +68,7 @@ class InputCRSF: public InputDevice
     static constexpr uint32_t CRSF_BAUD_DEFAULT = 420000;
     static constexpr uint32_t CRSF_BAUD_FALLBACK = 400000;
     static constexpr uint32_t BAUD_PROBE_INTERVAL_MS = 1200;
+    static constexpr uint32_t BAUD_LOCK_TIMEOUT_MS = 1000;
     static constexpr uint8_t VALID_FRAMES_TO_LOCK_BAUD = 2;
 
     Device::SerialDevice * _serial;

@@ -21,330 +21,345 @@ int failures = 0;
   } \
 } while(false)
 
-using Channels = std::array<uint16_t, 16>;
+using RadioChannels = std::array<uint16_t, 32>;
+using PhoneChannels = std::array<uint16_t, 16>;
 
-Channels neutralChannels()
+RadioChannels neutralRadio()
 {
-  Channels channels{};
+  RadioChannels channels{};
   channels.fill(1500);
+  channels[2] = 988;
+  channels[4] = 988;
+  channels[10] = 988;
   return channels;
 }
 
-void route(Channels& logical, const Channels& transport, bool directActive,
-           uint32_t nowMs, DroneProtoCommandState& state,
-           const Channels *trainerSideband = nullptr, bool trainerSidebandFresh = false)
+PhoneChannels activePhone()
 {
-  DroneProtoCommandRouter::route(logical.data(), transport.data(), transport.size(),
-                                 directActive,
-                                 trainerSideband ? trainerSideband->data() : nullptr,
-                                 trainerSideband ? trainerSideband->size() : 0,
-                                 trainerSidebandFresh, nowMs, state);
+  PhoneChannels channels{};
+  channels.fill(1500);
+  channels[2] = 988;
+  channels[4] = 988;
+  channels[5] = 1250;
+  channels[12] = 2012;
+  channels[14] = 988;
+  channels[15] = 1230;
+  return channels;
 }
 
-void sendTrainerHeartbeat(Channels& logical, Channels& transport,
-                          uint32_t startMs, DroneProtoCommandState& state,
-                          const Channels *trainerSideband = nullptr,
-                          bool trainerSidebandFresh = false)
+struct Fixture
 {
-  const uint16_t heartbeat[] = {1230, 1270, 1230, 1270};
-  for(size_t i = 0; i < 4; i++)
+  DroneProtoCommandState state;
+  RadioChannels radio = neutralRadio();
+  RadioChannels logical = radio;
+  PhoneChannels phone = activePhone();
+  uint32_t nowMs = 0;
+
+  void tick(uint32_t advanceMs = 20, bool phoneFresh = true,
+            bool toggleHeartbeat = true, bool directActive = false)
   {
-    transport[15] = heartbeat[i];
-    logical = transport;
-    route(logical, transport, false, startMs + static_cast<uint32_t>(i * 20), state,
-          trainerSideband, trainerSidebandFresh);
+    nowMs += advanceMs;
+    if(phoneFresh && toggleHeartbeat)
+      phone[15] = phone[15] == 1230 ? 1270 : 1230;
+    logical = radio;
+    DroneProtoCommandRouter::route(logical.data(), radio.data(), radio.size(),
+      directActive, phone.data(), phone.size(), phoneFresh, nowMs, state);
   }
-}
 
-void testNormalMidpointDoesNotTakeOver()
-{
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  Channels logical = transport;
-  transport[15] = 1500;
-
-  route(logical, transport, false, 10, state);
-
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(!state.pending.valid);
-}
-
-void testFrozenHighMarkerDoesNotTakeOver()
-{
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  Channels logical = transport;
-  transport[15] = 2012; // Radio output can remain high after the trainer powers off.
-
-  for(uint32_t nowMs: {10u, 30u, 60u, 120u, 500u})
+  void runFor(uint32_t durationMs, bool phoneFresh = true,
+              bool toggleHeartbeat = true)
   {
-    logical = transport;
-    route(logical, transport, false, nowMs, state);
-    CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-    CHECK(!state.trainerHeartbeatFresh);
+    for(uint32_t elapsed = 0; elapsed < durationMs; elapsed += 20)
+      tick(20, phoneFresh, toggleHeartbeat);
   }
+
+  void qualifyPhone()
+  {
+    tick(1);
+    runFor(220);
+    CHECK(state.trainerLinkQualified);
+    CHECK(state.trainerArmLowStable);
+  }
+
+  void engageTrainer()
+  {
+    qualifyPhone();
+    radio[10] = 2012;
+    runFor(120);
+    CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
+    CHECK(state.trainerTakeoverLatched);
+  }
+};
+
+void testOneMillisecondArmAndTrainerGlitchIgnored()
+{
+  Fixture f;
+  f.qualifyPhone();
+
+  f.radio[4] = 2012;
+  f.radio[10] = 2012;
+  f.tick(1);
+  CHECK(f.logical[4] == 1000);
+  CHECK(!f.state.trainerSafetyEnabled);
+  CHECK(!f.state.trainerTakeoverPending);
+
+  f.radio[4] = 988;
+  f.radio[10] = 988;
+  f.tick(1);
+  f.runFor(140);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerSafetyEnabled);
+  CHECK(!f.state.radioArmDebounced);
+  CHECK(!f.state.trainerTakeoverLatched);
 }
 
-void testHeartbeatWithoutPhoneFrameKeepsRadioMaster()
+void testPendingRequestSurvivesPhoneStartupOrdering()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  transport[5] = 2012;  // CH6 flight mode.
-  transport[7] = 1750;  // CH8 task execution.
-  transport[10] = 1600; // Phone roll.
-  transport[11] = 1400; // Phone pitch.
-  transport[12] = 1300; // Phone throttle.
-  transport[13] = 1700; // Phone yaw.
-  transport[14] = 2000; // Phone arm.
-  Channels logical = transport;
+  Fixture f;
+  f.tick(1, false);
+  f.radio[10] = 2012;
+  f.runFor(120, false);
+  CHECK(f.state.trainerSafetyEnabled);
+  CHECK(f.state.trainerTakeoverPending);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
 
-  sendTrainerHeartbeat(logical, transport, 20, state);
-
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(state.trainerHeartbeatFresh);
-  for(size_t i = 0; i < logical.size(); i++) CHECK(logical[i] == transport[i]);
-  CHECK(!state.trainerTaskArmed);
-  CHECK(!state.pending.valid);
+  f.runFor(240, true);
+  CHECK(f.state.trainerLinkQualified);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+  CHECK(f.state.trainerTakeoverLatched);
+  CHECK(!f.state.trainerTakeoverPending);
 }
 
-void testTrainerFullPhoneOverride()
+void testTrainerMapsCompletePhoneFrameAndOwnsArmAfterEntry()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  transport[5] = 1400;
-  transport[7] = 1450;
-  transport[10] = 1600;
-  transport[11] = 1400;
-  transport[12] = 1300;
-  transport[13] = 1700;
-  transport[14] = 988;
+  Fixture f;
+  f.phone[0] = 1111;
+  f.phone[1] = 1222;
+  f.phone[2] = 1333;
+  f.phone[3] = 1444;
+  f.phone[5] = 1400;
+  f.phone[6] = 1660;
+  f.phone[7] = 2012;
+  f.phone[8] = 2012;
+  f.phone[9] = 988;
+  f.phone[10] = 2012;
+  f.phone[11] = 988;
+  f.phone[13] = 2012;
+  f.engageTrainer();
 
-  Channels sideband = neutralChannels();
-  sideband[0] = 1111;  // Roll.
-  sideband[1] = 1222;  // Pitch.
-  sideband[2] = 1333;  // Throttle.
-  sideband[3] = 1444;  // Yaw.
-  sideband[4] = 2012;  // Arm.
-  sideband[5] = 1250;  // Task selector idle.
-  sideband[6] = 1660;  // Servo.
-  sideband[7] = 2012;  // Flight mode.
-  sideband[8] = 2012;  // Beeper.
-  sideband[9] = 988;   // Aux6.
-  sideband[10] = 2012; // Aux7.
-  sideband[11] = 988;  // Aux8.
-  sideband[12] = 2012; // Takeover/deadman.
-  sideband[13] = 2012; // Air mode.
-  sideband[14] = 2012; // Task run.
-  sideband[15] = 2012; // Aux5.
+  CHECK(f.logical[0] == 1111);
+  CHECK(f.logical[1] == 1222);
+  CHECK(f.logical[2] == 1444);
+  CHECK(f.logical[3] == 1333);
+  CHECK(f.logical[4] == 988);
+  CHECK(f.logical[5] == 2012);
+  CHECK(f.logical[6] == 2012);
+  CHECK(f.logical[8] == 1400);
+  CHECK(f.logical[9] == 1660);
+  CHECK(f.logical[10] == 2012);
+  CHECK(f.logical[11] == 988);
+  CHECK(f.logical[12] == 2012);
+  CHECK(f.logical[13] == 988);
+  CHECK(f.logical[14] == 2012);
+  CHECK(f.logical[15] == 2012);
 
-  Channels logical = transport;
-  sendTrainerHeartbeat(logical, transport, 20, state, &sideband, true);
+  f.radio[4] = 2012;
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+  CHECK(f.logical[4] == 988);
 
-  CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
-  CHECK(logical[0] == 1111);
-  CHECK(logical[1] == 1222);
-  CHECK(logical[2] == 1444);
-  CHECK(logical[3] == 1333);
-  CHECK(logical[4] == 2012);
-  CHECK(logical[5] == 2012);
-  CHECK(logical[6] == 2012);
-  CHECK(logical[7] == 2012);
-  CHECK(logical[8] == 1250);
-  CHECK(logical[9] == 1660);
-  CHECK(logical[10] == 2012);
-  CHECK(logical[11] == 988);
-  CHECK(logical[12] == 2012);
-  CHECK(logical[13] == 988);
-  CHECK(logical[14] == 2012);
-  CHECK(logical[15] == 2012);
-  for(size_t i = 0; i < 6; i++) CHECK(state.functionUs[i] == logical[10 + i]);
+  f.phone[4] = 2012;
+  f.tick();
+  CHECK(f.logical[4] == 2012);
 }
 
-void testTrainerSidebandRequiresHeartbeat()
+void testArmedRadioBlocksTakeoverWithoutDisarming()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  transport[5] = 1300;
-  transport[15] = 1500;
-  Channels sideband = neutralChannels();
-  sideband[7] = 2012;
-  Channels logical = transport;
+  Fixture f;
+  f.qualifyPhone();
+  f.radio[4] = 2012;
+  f.runFor(120);
+  CHECK(f.state.radioArmDebounced);
+  CHECK(f.logical[4] == 2012);
 
-  route(logical, transport, false, 100, state, &sideband, true);
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.trainerTakeoverBlockedArmed);
+  CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(f.logical[4] == 2012);
 
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(!state.trainerHeartbeatFresh);
-  CHECK(logical[5] == 1300);
+  f.radio[4] = 988;
+  f.runFor(140);
+  CHECK(!f.state.radioArmDebounced);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerTakeoverLatched);
+
+  f.radio[10] = 988;
+  f.runFor(120);
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
 }
 
-void testTrainerSidebandLossRestoresWholeRadioFrame()
+void testSimultaneousSustainedArmAndTrainerChoosesRadioArm()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  transport[5] = 1500;
-  transport[7] = 1600;
-  Channels sideband = neutralChannels();
-  sideband[7] = 2012;
-  sideband[8] = 2012;
-  sideband[13] = 2012;
-  Channels logical = transport;
+  Fixture f;
+  f.qualifyPhone();
 
-  sendTrainerHeartbeat(logical, transport, 20, state, &sideband, true);
-  CHECK(logical[5] == 2012);
-  CHECK(logical[6] == 2012);
-  CHECK(logical[14] == 2012);
-
-  transport[15] = 1230;
-  logical = transport;
-  route(logical, transport, false, 100, state, nullptr, false);
-
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(logical[5] == 1500);
-  CHECK(logical[7] == 1600);
-  CHECK(logical[6] == 1500);
-  CHECK(logical[14] == 1500);
+  f.radio[4] = 2012;
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.radioArmDebounced);
+  CHECK(f.state.trainerSafetyEnabled);
+  CHECK(f.state.trainerTakeoverBlockedArmed);
+  CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(f.logical[4] == 2012);
 }
 
-void testRadioTrainerSwitchTurnsOffTakeover()
+void testPhoneArmHighRequiresFreshTrainerCycle()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  transport[0] = 1750;
-  Channels sideband = neutralChannels();
-  sideband[0] = 1100;
-  sideband[4] = 2012;
-  Channels logical = transport;
+  Fixture f;
+  f.phone[4] = 2012;
+  f.tick(1);
+  f.runFor(220);
+  CHECK(f.state.trainerLinkQualified);
+  CHECK(!f.state.trainerArmLowStable);
 
-  sendTrainerHeartbeat(logical, transport, 20, state, &sideband, true);
-  CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
-  CHECK(logical[0] == 1100);
-  CHECK(logical[4] == 2012);
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.trainerTakeoverBlockedTrainerArmed);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
 
-  // A RadioMaster trainer switch that stops passing the heartbeat must have
-  // final authority even while fresh phone frames continue over ESP-NOW.
-  logical = transport;
-  route(logical, transport, false, 500, state, &sideband, true);
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(!state.trainerHeartbeatFresh);
-  CHECK(logical[0] == 1750);
-  CHECK(logical[4] == transport[4]);
+  f.phone[4] = 988;
+  f.runFor(220);
+  CHECK(f.state.trainerArmLowStable);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+
+  f.radio[10] = 988;
+  f.runFor(120);
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
 }
 
-void testTrainerTaskRequiresHeartbeatAndRearm()
+void testTrainerIgnoresShortDropoutAndExitInterlocksRadioArm()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  Channels sideband = neutralChannels();
-  sideband[5] = 1250;
-  Channels logical = transport;
+  Fixture f;
+  f.radio[0] = 1750;
+  f.phone[0] = 1100;
+  f.engageTrainer();
 
-  sendTrainerHeartbeat(logical, transport, 20, state, &sideband, true);
-  CHECK(state.source == DroneProtoInputSource::TRAINER_PHONE);
-  CHECK(state.trainerTaskArmed);
+  f.radio[4] = 2012;
+  f.runFor(120);
+  CHECK(f.logical[4] == 988);
 
-  transport[15] = 1280;
-  logical = transport;
-  route(logical, transport, false, 100, state, &sideband, true);
-  CHECK(state.pending.valid);
-  CHECK(state.pending.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
-  CHECK(state.pending.source == DroneProtoInputSource::TRAINER_PHONE);
-  CHECK(state.pending.receivedAtMs == 100);
-  CHECK(state.pending.sequence == 1);
+  f.radio[10] = 988;
+  f.tick(1);
+  f.radio[10] = 2012;
+  f.tick(1);
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+
+  f.runFor(200, true, false);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+  f.tick(20, true, true);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+
+  f.radio[10] = 988;
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.logical[0] == 1750);
+  CHECK(f.logical[4] == 1000);
+  CHECK(f.state.radioArmReleaseRequired);
+
+  f.radio[4] = 988;
+  f.tick(1);
+  f.radio[4] = 2012;
+  f.tick(1);
+  CHECK(f.state.radioArmReleaseRequired);
+  CHECK(f.logical[4] == 1000);
+
+  f.radio[4] = 988;
+  f.runFor(120);
+  CHECK(!f.state.radioArmReleaseRequired);
+}
+
+void testQualifiedLinkLossRestoresRadioAndRequiresNewSwitchEdge()
+{
+  Fixture f;
+  f.engageTrainer();
+  f.radio[4] = 2012;
+  f.runFor(120);
+
+  f.tick(20, false, false);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.state.radioArmReleaseRequired);
+  CHECK(f.logical[4] == 1000);
+
+  f.radio[4] = 988;
+  f.runFor(140);
+  f.runFor(220, true);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerTakeoverLatched);
+}
+
+void testTrainerTaskUsesSelectorAndRunEdge()
+{
+  Fixture f;
+  f.phone[5] = 1300;
+  f.phone[14] = 988;
+  f.engageTrainer();
+  CHECK(f.state.selected == DroneProtoTaskCommand::GO_TO_PRESET_1);
+  CHECK(!f.state.pending.valid);
+
+  f.phone[14] = 2012;
+  f.tick();
+  CHECK(f.state.pending.valid);
+  CHECK(f.state.pending.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
+  CHECK(f.state.pending.source == DroneProtoInputSource::TRAINER_PHONE);
 
   DroneProtoTaskRequest request;
-  CHECK(DroneProtoCommandRouter::consumePending(state, request));
-  CHECK(request.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
-  CHECK(!DroneProtoCommandRouter::consumePending(state, request));
-
-  logical = transport;
-  route(logical, transport, false, 120, state, &sideband, true);
-  CHECK(!state.pending.valid);
-  CHECK(state.requestSequence == 1);
-
-  transport[15] = 1230;
-  logical = transport;
-  route(logical, transport, false, 140, state, &sideband, true);
-  transport[15] = 1780;
-  logical = transport;
-  route(logical, transport, false, 160, state, &sideband, true);
-  CHECK(state.pending.valid);
-  CHECK(state.pending.command == DroneProtoTaskCommand::TASK_1);
-  CHECK(state.pending.sequence == 2);
-
-  logical = transport;
-  route(logical, transport, false, 500, state, &sideband, true);
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(!state.trainerHeartbeatFresh);
+  CHECK(DroneProtoCommandRouter::consumePending(f.state, request));
+  CHECK(!DroneProtoCommandRouter::consumePending(f.state, request));
 }
 
-void testStartupExecuteHighDoesNotTrigger()
+void testNormalRadioTaskAndDirectPriority()
 {
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  Channels logical = transport;
-  transport[8] = 1200;
-  transport[7] = 2000;
+  Fixture f;
+  f.radio[8] = 1600;
+  f.radio[7] = 988;
+  f.tick();
+  f.radio[7] = 2012;
+  f.tick();
+  CHECK(f.state.pending.valid);
+  CHECK(f.state.pending.command == DroneProtoTaskCommand::RETURN_HOME);
+  CHECK(f.state.pending.source == DroneProtoInputSource::RADIOMASTER);
 
-  route(logical, transport, false, 100, state);
-
-  CHECK(state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(state.selected == DroneProtoTaskCommand::GO_TO_PRESET_1);
-  CHECK(!state.pending.valid);
-
-  transport[7] = 1000;
-  route(logical, transport, false, 110, state);
-  transport[7] = 2000;
-  route(logical, transport, false, 120, state);
-  CHECK(state.pending.valid);
-  CHECK(state.pending.command == DroneProtoTaskCommand::GO_TO_PRESET_1);
-  CHECK(state.pending.source == DroneProtoInputSource::RADIOMASTER);
+  DroneProtoCommandRouter::reset(f.state);
+  f.radio[10] = 2012;
+  f.tick(20, true, true, true);
+  CHECK(f.state.source == DroneProtoInputSource::WIFI_DIRECT);
+  CHECK(!f.state.trainerTakeoverLatched);
 }
 
-void testDirectSourceWinsAndUsesTaskEdge()
-{
-  DroneProtoCommandState state;
-  DroneProtoCommandRouter::reset(state);
-  Channels transport = neutralChannels();
-  Channels logical = transport;
-  transport[15] = 1250;
-  transport[8] = 1600;
-  transport[7] = 1000;
-
-  route(logical, transport, true, 130, state);
-  CHECK(state.source == DroneProtoInputSource::WIFI_DIRECT);
-  CHECK(state.selected == DroneProtoTaskCommand::RETURN_HOME);
-  CHECK(!state.pending.valid);
-
-  transport[7] = 2000;
-  route(logical, transport, true, 140, state);
-  CHECK(state.pending.valid);
-  CHECK(state.pending.command == DroneProtoTaskCommand::RETURN_HOME);
-  CHECK(state.pending.source == DroneProtoInputSource::WIFI_DIRECT);
-}
-
-}
+} // namespace
 
 int main()
 {
-  testNormalMidpointDoesNotTakeOver();
-  testFrozenHighMarkerDoesNotTakeOver();
-  testHeartbeatWithoutPhoneFrameKeepsRadioMaster();
-  testTrainerFullPhoneOverride();
-  testTrainerSidebandRequiresHeartbeat();
-  testTrainerSidebandLossRestoresWholeRadioFrame();
-  testRadioTrainerSwitchTurnsOffTakeover();
-  testTrainerTaskRequiresHeartbeatAndRearm();
-  testStartupExecuteHighDoesNotTrigger();
-  testDirectSourceWinsAndUsesTaskEdge();
+  testOneMillisecondArmAndTrainerGlitchIgnored();
+  testPendingRequestSurvivesPhoneStartupOrdering();
+  testTrainerMapsCompletePhoneFrameAndOwnsArmAfterEntry();
+  testArmedRadioBlocksTakeoverWithoutDisarming();
+  testSimultaneousSustainedArmAndTrainerChoosesRadioArm();
+  testPhoneArmHighRequiresFreshTrainerCycle();
+  testTrainerIgnoresShortDropoutAndExitInterlocksRadioArm();
+  testQualifiedLinkLossRestoresRadioAndRequiresNewSwitchEdge();
+  testTrainerTaskUsesSelectorAndRunEdge();
+  testNormalRadioTaskAndDirectPriority();
 
   if(failures != 0)
   {

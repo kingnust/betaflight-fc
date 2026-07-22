@@ -24,12 +24,10 @@ extern "C" {
 
 namespace {
 
-// Betaflight's MSP contract exposes 8 remappable inputs and at most 18 RC
-// channels. Drone Prototype keeps 32 channels internally for trainer/task
-// routing, but oversized legacy MSP replies can make the Receiver tab reject
-// the entire response.
+// Keep the Configurator Receiver tab on the standard 16-channel surface.
+// Drone Prototype retains 32 inputs internally for CRSF subset compatibility.
 constexpr size_t MSP_RX_MAP_CHANNELS = 8;
-constexpr size_t MSP_RC_CHANNELS = 18;
+constexpr size_t MSP_RC_CHANNELS = 16;
 
 enum SerialSpeedIndex {
   SERIAL_SPEED_INDEX_AUTO = 0,
