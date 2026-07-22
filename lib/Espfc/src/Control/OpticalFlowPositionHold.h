@@ -23,12 +23,21 @@ enum PositionHoldFault : uint8_t
   POSHOLD_TILT,
 };
 
+enum PositionHoldRelease : uint8_t
+{
+  POSHOLD_RELEASE_NONE = 0,
+  POSHOLD_RELEASE_SENSOR,
+  POSHOLD_RELEASE_EXCESSIVE_MOTION,
+};
+
 struct OpticalFlowPositionHoldState
 {
   bool requested = false;
   bool active = false;
   bool healthy = false;
+  bool releaseLatched = false;
   PositionHoldFault fault = POSHOLD_NO_FLOW;
+  PositionHoldRelease release = POSHOLD_RELEASE_NONE;
   uint32_t lastFlowUpdateMs = 0;
   uint32_t lastFlowFrame = 0;
   uint32_t resetCount = 0;
@@ -41,6 +50,7 @@ struct OpticalFlowPositionHoldState
 
 PositionHoldFault positionHoldSensorFault(const Model& model, uint32_t nowMs);
 const char * positionHoldFaultName(PositionHoldFault fault);
+const char * positionHoldReleaseName(PositionHoldRelease release);
 
 class OpticalFlowPositionHold
 {
@@ -58,6 +68,7 @@ class OpticalFlowPositionHold
     Model& _model;
     bool _wasArmed = false;
     bool _wasRequested = false;
+    uint32_t _excessiveMotionSinceMs = 0;
     float _filteredVelocity[2] = {0.0f, 0.0f};
 };
 

@@ -16,6 +16,8 @@ constexpr uint16_t RANGE_MAX_MM = 4000;
 constexpr uint8_t MTF_MIN_FLOW_QUALITY = 30;
 constexpr float MAX_TILT_RAD = 0.436332f;             // 25 degrees.
 constexpr float PILOT_DEADBAND = 0.08f;
+constexpr float EXCESSIVE_VELOCITY_MPS = 2.0f;
+constexpr uint32_t EXCESSIVE_MOTION_TIME_MS = 100;
 constexpr float PILOT_MAX_VELOCITY_MPS = 1.0f;
 constexpr float POSITION_GAIN = 0.8f;
 constexpr float POSITION_MAX_VELOCITY_MPS = 0.6f;
@@ -97,6 +99,17 @@ const char * positionHoldFaultName(PositionHoldFault fault)
     case POSHOLD_FLOW_STALE: return "FLOW_STALE";
     case POSHOLD_FLOW_QUALITY: return "FLOW_QUALITY";
     case POSHOLD_TILT: return "TILT";
+    default: return "UNKNOWN";
+  }
+}
+
+const char * positionHoldReleaseName(PositionHoldRelease release)
+{
+  switch(release)
+  {
+    case POSHOLD_RELEASE_NONE: return "NONE";
+    case POSHOLD_RELEASE_SENSOR: return "SENSOR";
+    case POSHOLD_RELEASE_EXCESSIVE_MOTION: return "EXCESSIVE_MOTION";
     default: return "UNKNOWN";
   }
 }
@@ -207,6 +220,13 @@ bool OpticalFlowPositionHold::update()
   const bool requested = _model.isModeActive(MODE_POSHOLD);
   state.requested = requested;
 
+  if(!requested)
+  {
+    state.releaseLatched = false;
+    state.release = POSHOLD_RELEASE_NONE;
+    _excessiveMotionSinceMs = 0;
+  }
+
   if(armed && !_wasArmed) resetLocalPosition();
   _wasArmed = armed;
 
@@ -215,7 +235,29 @@ bool OpticalFlowPositionHold::update()
   state.healthy = state.fault == POSHOLD_OK;
   if(state.healthy && armed) updateFlowMeasurement();
 
-  if(!armed || !requested || !state.healthy)
+  const float speed = std::hypot(state.velocityBody[0], state.velocityBody[1]);
+  if(state.active && speed > EXCESSIVE_VELOCITY_MPS)
+  {
+    if(_excessiveMotionSinceMs == 0) _excessiveMotionSinceMs = nowMs;
+  }
+  else
+  {
+    _excessiveMotionSinceMs = 0;
+  }
+
+  if(state.active && !state.healthy)
+  {
+    state.releaseLatched = true;
+    state.release = POSHOLD_RELEASE_SENSOR;
+  }
+  else if(state.active && _excessiveMotionSinceMs != 0 &&
+          static_cast<uint32_t>(nowMs - _excessiveMotionSinceMs) >= EXCESSIVE_MOTION_TIME_MS)
+  {
+    state.releaseLatched = true;
+    state.release = POSHOLD_RELEASE_EXCESSIVE_MOTION;
+  }
+
+  if(!armed || !requested || !state.healthy || state.releaseLatched)
   {
     state.active = false;
     state.angleSetpoint[0] = state.angleSetpoint[1] = 0.0f;

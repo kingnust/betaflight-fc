@@ -185,7 +185,7 @@ void Actuator::updateModeMask()
   {
     bool newVal = newMask & (1 << i);
     bool oldVal = _model.state.mode.mask & (1 << i);
-    if(newVal == oldVal && !(i == MODE_POSHOLD && newVal)) continue; // revalidate sensor-backed hold
+    if(newVal == oldVal) continue;
     if(newVal && !canActivateMode((FlightMode)i))
     {
       newMask &= ~(1 << i); // block activation, clear bit

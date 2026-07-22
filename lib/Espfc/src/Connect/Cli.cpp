@@ -2294,6 +2294,10 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.positionHold.active ? 1 : 0);
     s.print(F(" health="));
     s.print(Control::positionHoldFaultName(fault));
+    s.print(F(" release="));
+    s.print(Control::positionHoldReleaseName(_model.state.positionHold.release));
+    s.print(F(" latched="));
+    s.print(_model.state.positionHold.releaseLatched ? 1 : 0);
     s.print(F(" range_mm="));
     s.print(_model.state.aux.range.distanceMm);
     s.print(F(" flow="));
