@@ -14,6 +14,9 @@
 #include "Hal/Gpio.h"
 #include "Hal/Pgm.h"
 #include "msp/msp_protocol.h"
+#if defined(ESP32)
+#include "esp32-hal-uart.h"
+#endif
 
 #ifdef USE_FLASHFS
 #include "Device/FlashDevice.h"
@@ -2387,6 +2390,46 @@ void Cli::execute(CliCmd& cmd, Stream& s)
   {
     printCrsfRxStatus(_model, s, millis());
   }
+#if defined(ESP32)
+  else if(strcmp_P(cmd.args[0], PSTR("uartpins")) == 0)
+  {
+    const uint32_t baud[] = {Serial0.baudRate(), Serial1.baudRate(), Serial2.baudRate()};
+    for(uint8_t uart = 0; uart < 3; uart++)
+    {
+      s.print(F("uart"));
+      s.print(uart);
+      s.print(F(": rx_gpio="));
+      s.print(uart_get_RxPin(uart));
+      s.print(F(" tx_gpio="));
+      s.print(uart_get_TxPin(uart));
+      s.print(F(" baud="));
+      s.println(baud[uart]);
+    }
+    s.println(F("usb_cdc: native USB (no UART GPIO pins)"));
+  }
+#endif
+#if defined(ESPFC_DRONE_PROTO_CAMERA_UART)
+  else if(strcmp_P(cmd.args[0], PSTR("camstatus")) == 0)
+  {
+    const CameraUartState& camera = _model.state.cameraUart;
+    const uint32_t now = millis();
+    s.print(F("camera_uart: present="));
+    s.print(camera.present ? 1 : 0);
+    s.print(F(" age="));
+    printAge(s, camera.lastUpdate, now);
+    s.print(F(" seq="));
+    s.print(camera.lastSequence);
+    s.print(F(" accepted="));
+    s.print(camera.acceptedCount);
+    s.print(F(" duplicates="));
+    s.print(camera.duplicateCount);
+    s.print(F(" rejected="));
+    s.println(camera.rejectedCount);
+    s.print(F("             qr=\""));
+    s.print(camera.payload);
+    s.println(F("\""));
+  }
+#endif
   else if(strcmp_P(cmd.args[0], PSTR("task")) == 0)
   {
     if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("clear")) == 0)

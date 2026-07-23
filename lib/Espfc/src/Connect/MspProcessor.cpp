@@ -28,6 +28,13 @@ namespace {
 // Drone Prototype retains 32 inputs internally for CRSF subset compatibility.
 constexpr size_t MSP_RX_MAP_CHANNELS = 8;
 constexpr size_t MSP_RC_CHANNELS = 16;
+constexpr uint16_t MSP2_DRONE_PROTO_CAMERA_QR = 0x3001;
+constexpr uint8_t CAMERA_PROTOCOL_VERSION = 1;
+constexpr uint8_t CAMERA_MESSAGE_QR = 1;
+constexpr uint8_t CAMERA_ACK_ACCEPTED = 0;
+constexpr uint8_t CAMERA_ACK_DUPLICATE = 1;
+constexpr uint8_t CAMERA_ACK_MALFORMED = 2;
+constexpr uint8_t CAMERA_ACK_UNSUPPORTED = 3;
 
 enum SerialSpeedIndex {
   SERIAL_SPEED_INDEX_AUTO = 0,
@@ -296,6 +303,67 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
   r.result = 1;
   switch(m.cmd)
   {
+#if defined(ESPFC_DRONE_PROTO_CAMERA_UART)
+    case MSP2_DRONE_PROTO_CAMERA_QR:
+    {
+      uint8_t status = CAMERA_ACK_MALFORMED;
+      uint16_t sequence = 0;
+      if(m.version == MSP_V2 && m.remain() >= 5)
+      {
+        const uint8_t version = m.readU8();
+        const uint8_t type = m.readU8();
+        sequence = m.readU16();
+        const uint8_t length = m.readU8();
+        if(version != CAMERA_PROTOCOL_VERSION || type != CAMERA_MESSAGE_QR)
+        {
+          status = CAMERA_ACK_UNSUPPORTED;
+        }
+        else if(length == 0 || length > CameraUartState::MAX_PAYLOAD || m.remain() != length)
+        {
+          status = CAMERA_ACK_MALFORMED;
+        }
+        else if(_model.state.cameraUart.present && sequence == _model.state.cameraUart.lastSequence)
+        {
+          status = CAMERA_ACK_DUPLICATE;
+          _model.state.cameraUart.duplicateCount++;
+          _model.state.cameraUart.lastUpdate = millis();
+        }
+        else
+        {
+          bool printable = true;
+          char candidate[CameraUartState::MAX_PAYLOAD + 1] = {};
+          for(uint8_t i = 0; i < length; i++)
+          {
+            const uint8_t value = m.readU8();
+            if(value < 32 || value > 126) printable = false;
+            candidate[i] = static_cast<char>(value);
+          }
+          if(printable)
+          {
+            memcpy(_model.state.cameraUart.payload, candidate, length + 1);
+            _model.state.cameraUart.payloadLength = length;
+            _model.state.cameraUart.lastSequence = sequence;
+            _model.state.cameraUart.acceptedCount++;
+            _model.state.cameraUart.lastUpdate = millis();
+            _model.state.cameraUart.present = true;
+            status = CAMERA_ACK_ACCEPTED;
+          }
+          else
+          {
+            status = CAMERA_ACK_MALFORMED;
+          }
+        }
+      }
+      if(status == CAMERA_ACK_MALFORMED || status == CAMERA_ACK_UNSUPPORTED)
+      {
+        _model.state.cameraUart.rejectedCount++;
+      }
+      r.writeU8(CAMERA_PROTOCOL_VERSION);
+      r.writeU8(status);
+      r.writeU16(sequence);
+      break;
+    }
+#endif
     case MSP_API_VERSION:
       r.writeU8(MSP_PROTOCOL_VERSION);
       r.writeU8(API_VERSION_MAJOR);

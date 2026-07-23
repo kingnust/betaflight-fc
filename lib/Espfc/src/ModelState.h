@@ -568,6 +568,19 @@ struct AuxSensorState
   Mtf02pState mtf02p;
 };
 
+struct CameraUartState
+{
+  static constexpr size_t MAX_PAYLOAD = 96;
+  bool present = false;
+  uint16_t lastSequence = 0;
+  uint8_t payloadLength = 0;
+  char payload[MAX_PAYLOAD + 1] = {};
+  uint32_t acceptedCount = 0;
+  uint32_t duplicateCount = 0;
+  uint32_t rejectedCount = 0;
+  uint32_t lastUpdate = 0;
+};
+
 // runtime data
 struct ModelState
 {
@@ -577,6 +590,7 @@ struct ModelState
   BaroState baro;
   GpsState gps;
   AuxSensorState aux;
+  CameraUartState cameraUart;
 
   InputState input;
   Control::DroneProtoCommandState commands;
