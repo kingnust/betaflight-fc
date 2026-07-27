@@ -9,6 +9,9 @@
 #if defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
 #include "Device/DroneProtoDirectRc.hpp"
 #endif
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+#include "Device/DroneProtoWk2132.hpp"
+#endif
 #include "Device/GyroDevice.h"
 #include "DroneProtoProfiles.hpp"
 #include "Hal/Gpio.h"
@@ -1307,6 +1310,9 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
       PSTR(" rpm [telemetry 0|1|filter 0-3]"),
       PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"), PSTR(" rxstatus"),
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+      PSTR(" wk2132 [retry|clear camera|clear uwb]"),
+#endif
       PSTR(" scaler"), PSTR(" mixer"),
       PSTR(" stats"), PSTR(" status"), PSTR(" devinfo"), PSTR(" version"), PSTR(" logs"), PSTR(" gps [set_home|clear_home]"),
       //PSTR(" load"), PSTR(" eeprom"),
@@ -2406,6 +2412,111 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       s.println(baud[uart]);
     }
     s.println(F("usb_cdc: native USB (no UART GPIO pins)"));
+  }
+#endif
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+  else if(strcmp_P(cmd.args[0], PSTR("wk2132")) == 0)
+  {
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("retry")) == 0)
+    {
+      Device::DroneProtoWk2132::begin();
+    }
+    else if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("clear")) == 0 && cmd.args[2])
+    {
+      if(strcmp_P(cmd.args[2], PSTR("camera")) == 0)
+      {
+        Device::DroneProtoWk2132::cameraPort().clearFifos();
+      }
+      else if(strcmp_P(cmd.args[2], PSTR("uwb")) == 0)
+      {
+        Device::DroneProtoWk2132::uwbPort().clearFifos();
+      }
+    }
+
+    Device::Wk2132Bridge& wk = Device::DroneProtoWk2132::bridge();
+    const Device::Wk2132BridgeConfig& config = wk.config();
+    const Device::Wk2132BridgeStats& stats = wk.stats();
+    s.print(F("wk2132: started="));
+    s.print(wk.started() ? 1 : 0);
+    s.print(F(" present="));
+    s.print(wk.present() ? 1 : 0);
+    s.print(F(" i2c_mode="));
+    s.print(wk.i2cModeValid() ? 1 : 0);
+    s.print(F(" sda="));
+    s.print(config.sda);
+    s.print(F(" scl="));
+    s.print(config.scl);
+    s.print(F(" reset="));
+    s.print(config.reset);
+    s.print(F(" irq="));
+    s.print(config.irq);
+    s.print(F(" i2c_hz="));
+    s.print(config.i2cFrequencyHz);
+    s.print(F(" oscillator_hz="));
+    s.print(config.oscillatorHz);
+    s.print(F(" gena=0x"));
+    s.print(stats.gena, HEX);
+    s.print(F(" attempts="));
+    s.print(stats.beginAttempts);
+    s.print(F(" bus_err="));
+    s.print(stats.busErrors);
+    s.print(F(" verify_err="));
+    s.print(stats.verificationErrors);
+    s.print(F(" wire_status="));
+    s.println(stats.lastWireStatus);
+
+    Device::Wk2132SerialPort* ports[] = {
+      &Device::DroneProtoWk2132::cameraPort(),
+      &Device::DroneProtoWk2132::uwbPort()
+    };
+    const __FlashStringHelper* names[] = {F("camera"), F("uwb")};
+    for(uint8_t i = 0; i < 2; i++)
+    {
+      Device::Wk2132SerialPort& port = *ports[i];
+      const Device::Wk2132PortStats& portStats = port.stats();
+      uint16_t rxUsed = 0;
+      uint16_t txUsed = 0;
+      uint8_t fifoStatus = 0;
+      const bool fifoOk = port.fifoLevels(rxUsed, txUsed, fifoStatus);
+      s.print(F("         "));
+      s.print(names[i]);
+      s.print(F(": ch="));
+      s.print(port.channel() + 1);
+      s.print(F(" configured="));
+      s.print(portStats.configured ? 1 : 0);
+      s.print(F(" baud="));
+      s.print(portStats.requestedBaud);
+      s.print('/');
+      s.print(portStats.actualBaud);
+      s.print(F(" err_ppm="));
+      s.print(portStats.baudErrorPpm);
+      s.print(F(" fifo="));
+      if(fifoOk)
+      {
+        s.print(rxUsed);
+        s.print('/');
+        s.print(txUsed);
+        s.print(F(" fsr=0x"));
+        s.print(fifoStatus, HEX);
+      }
+      else
+      {
+        s.print(F("unavailable"));
+      }
+      s.print(F(" bytes="));
+      s.print(portStats.rxBytes);
+      s.print('/');
+      s.print(portStats.txBytes);
+      s.print(F(" io_err="));
+      s.print(portStats.fifoReadErrors + portStats.fifoWriteErrors);
+      s.print(F(" cfg_err="));
+      s.print(portStats.configErrors);
+      s.print(F(" uart_err="));
+      s.print(portStats.rxOverflowErrors + portStats.parityErrors +
+        portStats.framingErrors + portStats.breakErrors);
+      s.print(F(" flush_timeout="));
+      s.println(portStats.flushTimeouts);
+    }
   }
 #endif
 #if defined(ESPFC_DRONE_PROTO_CAMERA_UART)

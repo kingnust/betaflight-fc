@@ -4,6 +4,9 @@
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
 #include "Device/DroneProtoDirectRc.hpp"
 #endif
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+#include "Device/DroneProtoWk2132.hpp"
+#endif
 #include "DroneProtoProfiles.hpp"
 #include "Debug_Espfc.h"
 
@@ -38,6 +41,9 @@ int Espfc::begin()
   DRONE_PROTO_DEBUG_LINE("after serial.begin, before hardware.begin");
   //_model.logStorageResult();
   _hardware.begin();    // requires _model.load()
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+  Device::DroneProtoWk2132::begin();
+#endif
   DRONE_PROTO_DEBUG_LINE("after hardware.begin, before model.begin");
   _model.begin();       // requires _hardware.begin()
   DRONE_PROTO_DEBUG_LINE("after model.begin, before mixer.begin");
