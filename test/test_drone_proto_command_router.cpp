@@ -262,8 +262,10 @@ void testTrainerIgnoresShortDropoutAndExitInterlocksRadioArm()
   f.runFor(120);
   CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
 
-  f.runFor(200, true, false);
+  f.runFor(600, true, false);
   CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+  CHECK(f.state.trainerLinkQualified);
+  CHECK(!f.state.trainerHeartbeatFresh);
   f.tick(20, true, true);
   CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
 
@@ -287,24 +289,46 @@ void testTrainerIgnoresShortDropoutAndExitInterlocksRadioArm()
   CHECK(!f.state.radioArmReleaseRequired);
 }
 
-void testQualifiedLinkLossRestoresRadioAndRequiresNewSwitchEdge()
+void testQualifiedLinkLossRecoversOnlyAfterBothArmSourcesAreLow()
 {
   Fixture f;
   f.engageTrainer();
+  f.phone[4] = 2012;
+  f.tick();
+  CHECK(f.logical[4] == 2012);
+
   f.radio[4] = 2012;
   f.runFor(120);
 
   f.tick(20, false, false);
   CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
   CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.state.trainerRecoveryPending);
+  CHECK(f.state.trainerLinkDropouts == 1);
   CHECK(f.state.radioArmReleaseRequired);
+  CHECK(f.logical[4] == 1000);
+
+  f.runFor(160, true);
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(f.state.trainerRecoveryPending);
   CHECK(f.logical[4] == 1000);
 
   f.radio[4] = 988;
   f.runFor(140);
-  f.runFor(220, true);
   CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
-  CHECK(!f.state.trainerTakeoverLatched);
+  CHECK(f.state.trainerRecoveryPending);
+
+  f.phone[4] = 988;
+  f.runFor(140);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+  CHECK(f.state.trainerTakeoverLatched);
+  CHECK(!f.state.trainerRecoveryPending);
+  CHECK(f.state.trainerLinkRecoveries == 1);
+  CHECK(f.logical[4] == 988);
+
+  f.phone[4] = 2012;
+  f.tick();
+  CHECK(f.logical[4] == 2012);
 }
 
 void testTrainerTaskUsesSelectorAndRunEdge()
@@ -357,7 +381,7 @@ int main()
   testSimultaneousSustainedArmAndTrainerChoosesRadioArm();
   testPhoneArmHighRequiresFreshTrainerCycle();
   testTrainerIgnoresShortDropoutAndExitInterlocksRadioArm();
-  testQualifiedLinkLossRestoresRadioAndRequiresNewSwitchEdge();
+  testQualifiedLinkLossRecoversOnlyAfterBothArmSourcesAreLow();
   testTrainerTaskUsesSelectorAndRunEdge();
   testNormalRadioTaskAndDirectPriority();
 

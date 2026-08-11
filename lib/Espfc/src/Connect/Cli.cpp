@@ -2000,6 +2000,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.commands.trainerTakeoverRequested ? 1 : 0);
     s.print(F(" latched="));
     s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
+    s.print(F(" recovery="));
+    s.print(_model.state.commands.trainerRecoveryPending ? 1 : 0);
+    s.print(F(" drops="));
+    s.print(_model.state.commands.trainerLinkDropouts);
+    s.print(F(" recovers="));
+    s.print(_model.state.commands.trainerLinkRecoveries);
     s.print(F(" blocked_armed="));
     s.print(_model.state.commands.trainerTakeoverBlockedArmed ? 1 : 0);
     s.print(F(" blocked_phone_arm="));
@@ -2452,6 +2458,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(config.irq);
     s.print(F(" i2c_hz="));
     s.print(config.i2cFrequencyHz);
+    s.print(F(" shared_bus="));
+    s.print(config.ownsI2cBus ? 0 : 1);
     s.print(F(" oscillator_hz="));
     s.print(config.oscillatorHz);
     s.print(F(" gena=0x"));
@@ -2584,6 +2592,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.commands.trainerTakeoverTimedOut ? 1 : 0);
     s.print(F(" latched="));
     s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
+    s.print(F(" recovery="));
+    s.print(_model.state.commands.trainerRecoveryPending ? 1 : 0);
+    s.print(F(" link_drops="));
+    s.print(_model.state.commands.trainerLinkDropouts);
+    s.print(F(" link_recovers="));
+    s.print(_model.state.commands.trainerLinkRecoveries);
     s.print(F(" blocked_armed="));
     s.print(_model.state.commands.trainerTakeoverBlockedArmed ? 1 : 0);
     s.print(F(" blocked_phone_arm="));
@@ -2758,6 +2772,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(_model.state.commands.trainerTakeoverLatched ? 1 : 0);
     s.print(F(" trainer_link="));
     s.print(_model.state.commands.trainerLinkQualified ? 1 : 0);
+    s.print(F(" trainer_recovery="));
+    s.print(_model.state.commands.trainerRecoveryPending ? 1 : 0);
     s.print(F(" arm_flags=0x"));
     s.print(_model.state.mode.armingDisabledFlags, HEX);
     s.print(F(" rx_ok="));

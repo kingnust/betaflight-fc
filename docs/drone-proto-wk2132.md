@@ -1,11 +1,13 @@
-# WK2132 / DFR0627 camera and UWB UART bridge
+# WK2132 camera and UWB UART bridge
 
-The Drone Prototype WK2132 framework uses a dedicated ESP32-S3 I2C controller
-on GPIO47/GPIO48. It does not change UART0, the MTF02P UART, or the ELRS/CRSF
-UART. WK2132 channel 1 is named `camera`; channel 2 is named `uwb`.
+This configuration matches `Schematic_Drone_PCB_2026-07-28.pdf`. The WK2132
+shares the FC sensor I2C bus on GPIO17/GPIO16. It uses the already initialized
+`EspWire` instance and never starts, reconfigures, or stops a second I2C
+controller on those pins.
 
-The defaults are compatible with the DFRobot DFR0627 circuit: 14.7456 MHz
-oscillator and address switches IA1=1, IA0=1.
+WK2132 channel 1 is `uwb`; channel 2 is `camera`. The PCB uses a 14.7456 MHz
+crystal and address straps IA1=0, IA0=1. The resulting register/FIFO address
+pairs are 0x30/0x31 for UWB and 0x32/0x33 for camera.
 
 ## Wiring
 
@@ -16,42 +18,39 @@ safe for the ESP32-S3.
 | --- | --- |
 | 3V3 | VCC |
 | GND | GND |
-| GPIO47 | MP0 / SDA |
-| GPIO48 | MP2 / SCL |
-| GPIO40 | RSTN |
+| GPIO17 / I2C1_SDA | MP0 / SDA |
+| GPIO16 / I2C1_SCL | MP2 / SCL |
+| RC reset only | RSTN |
+| GPIO6 | IRQ |
 | 3V3 | MD1 |
 | GND | MD0 |
-| 3V3 | MP3 / IA1 |
+| GND | MP3 / IA1 |
 | 3V3 | MP1 / IA0 |
 
-For a PCB based on the DFR0627 schematic, use its 5.1 kOhm pull-ups from SDA
-and SCL to 3.3 V. Do not duplicate them if another fitted part already provides
-pull-ups on this dedicated bus. Keep `RSTN` high with 10 kOhm and place 100 nF
-from `RSTN` to ground; GPIO40 drives this active-low reset in the experimental
-MTF02P build. The framework polls the FIFOs, so `IRQ` is optional and may be
-left unconnected; if it is connected later, use the schematic's 5.1 kOhm
-external pull-up. The DFR0627 also uses 10 kOhm pull-ups on RX1 and RX2 to
-prevent idle inputs from floating.
+The PCB has one 4.7 kOhm pull-up on each shared I2C line. Do not fit another
+strong pull-up pair on attached sensor modules. `RSTN` uses a 10 kOhm pull-up
+and 100 nF capacitor; firmware therefore leaves reset unassigned and uses the
+WK2132 global software reset after detection. `IRQ` is wired to GPIO6 with a
+5.1 kOhm external pull-up. The current transport polls the FIFOs, so GPIO6 is
+configured as an input but no interrupt handler is attached.
 
-For a bare WK2132, copy the oscillator circuit carefully: a 14.7456 MHz
-crystal, 1 MOhm feedback resistor, and the crystal-appropriate load capacitors
-(22 pF in the DFR0627 design). Keep the crystal, resistor, and capacitors close
-to OSCI/OSCO with short traces. The experimental build assumes 14.7456 MHz. Change
-`ESPFC_DRONE_PROTO_WK2132_OSCILLATOR_HZ` if the hardware uses another crystal.
-The configured value must match the real crystal or both UART baud rates will
-be wrong.
+The oscillator is a 14.7456 MHz crystal with a 1 MOhm feedback resistor and
+18 pF load capacitors. Keep these parts close to OSCI/OSCO. The configured
+oscillator value must match the fitted crystal or both UART baud rates will be
+wrong.
 
 Cross each UART's TX and RX:
 
 | WK2132 channel | Peripheral |
 | --- | --- |
-| TX1 | Camera RX |
-| RX1 | Camera TX |
-| TX2 | UWB RX |
-| RX2 | UWB TX |
+| TX1 | UWB RX |
+| RX1 | UWB TX |
+| TX2 | Camera RX |
+| RX2 | Camera TX |
 
-All boards must share ground. The WK2132's TX1/RX1 and TX2/RX2 pins are the new
-UART pins; GPIO47/GPIO48 remain I2C only.
+All boards must share ground. The camera connector is powered from 5 V, while
+the BU4 UWB connector is powered from 3.3 V as shown in the July 28 schematic.
+Confirm that both peripherals use 3.3 V UART logic.
 
 ## Build and diagnostics
 
@@ -67,9 +66,10 @@ After flashing that environment, enter the FC CLI and run:
 wk2132
 ```
 
-`present=1`, `i2c_mode=1`, and `configured=1` for both ports indicate a valid
-bridge configuration. `wk2132 retry` reinitializes the bridge after wiring is
-corrected. `wk2132 clear camera` and `wk2132 clear uwb` explicitly clear a
+`present=1`, `i2c_mode=1`, `shared_bus=1`, camera `ch=2`, UWB `ch=1`, and
+`configured=1` for both ports indicate a valid bridge configuration.
+`wk2132 retry` reinitializes only the WK2132 and does not restart the shared
+I2C bus. `wk2132 clear camera` and `wk2132 clear uwb` explicitly clear a
 port's FIFOs.
 
 ## Code access

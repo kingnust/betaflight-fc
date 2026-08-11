@@ -195,8 +195,12 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
       nowMs - state.trainerHeartbeatLastTransitionMs <= TRAINER_HEARTBEAT_TIMEOUT_MS;
   }
 
+  // Packet freshness already proves that the SuperMini is receiving phone
+  // frames: it stops the trainer-sideband stream when its phone hold expires.
+  // Keep the channel heartbeat as a diagnostic, but do not gate flight control
+  // on a square wave that can alias against the receiver's frame rate.
   state.trainerLinkQualified = trainerPacketFresh &&
-    state.trainerTakeoverRequested && state.trainerHeartbeatFresh;
+    state.trainerTakeoverRequested;
   if(state.trainerLinkQualified && !trainerArmed)
   {
     if(state.trainerArmLowSinceMs == 0) state.trainerArmLowSinceMs = nowMs;
@@ -209,6 +213,14 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
   }
 
   const bool trainerWasLatched = state.trainerTakeoverLatched;
+  const bool trainerLinkDropped = state.trainerTakeoverLatched &&
+    !directActive && state.trainerSafetyEnabled && !state.trainerLinkQualified;
+
+  if(trainerLinkDropped)
+  {
+    state.trainerRecoveryPending = true;
+    state.trainerLinkDropouts++;
+  }
 
   if(directActive || !state.trainerSafetyEnabled || !state.trainerLinkQualified)
   {
@@ -217,6 +229,7 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
 
   if(state.trainerSafetyRising && !directActive)
   {
+    state.trainerRecoveryPending = false;
     state.trainerTakeoverTimedOut = false;
     state.trainerTakeoverBlockedArmed = state.radioArmDebounced;
     state.trainerTakeoverBlockedTrainerArmed = false;
@@ -255,9 +268,37 @@ void DroneProtoCommandRouter::route(uint16_t *logicalChannels,
   if(!state.trainerSafetyEnabled)
   {
     state.trainerTakeoverPending = false;
+    state.trainerRecoveryPending = false;
     state.trainerTakeoverTimedOut = false;
     state.trainerTakeoverBlockedArmed = false;
     state.trainerTakeoverBlockedTrainerArmed = false;
+  }
+
+  if(directActive)
+  {
+    state.trainerRecoveryPending = false;
+  }
+  else if(state.trainerRecoveryPending)
+  {
+    // A recovered link may regain trainer ownership without forcing the pilot
+    // to cycle the physical permit switch. It can do so only while both arm
+    // sources are low, so recovery can never rearm the aircraft by itself.
+    if(state.radioArmDebounced)
+    {
+      state.trainerTakeoverBlockedArmed = true;
+    }
+    else if(state.trainerLinkQualified && trainerArmed)
+    {
+      state.trainerTakeoverBlockedTrainerArmed = true;
+    }
+    else if(state.trainerLinkQualified && state.trainerArmLowStable &&
+            !state.radioArmRaw)
+    {
+      state.trainerTakeoverLatched = true;
+      state.trainerRecoveryPending = false;
+      state.trainerTakeoverTimedOut = false;
+      state.trainerLinkRecoveries++;
+    }
   }
 
   const bool trainerActive = !directActive && state.trainerSafetyEnabled &&

@@ -21,7 +21,11 @@
 
 namespace Espfc {
 
-SerialManager::SerialManager(Model& model, TelemetryManager& telemetry): _model(model), _current(0), _msp(model), _cli(model), _vtx(model),
+SerialManager::SerialManager(Model& model, TelemetryManager& telemetry): _model(model), _current(0), _msp(model),
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+  _wkCameraMsp(model),
+#endif
+  _cli(model), _vtx(model),
   _telemetry(telemetry), _gps(model)
 #ifdef ESPFC_SERIAL_SOFT_0_WIFI
   , _wireless(model)
@@ -151,7 +155,7 @@ int FAST_CODE_ATTR SerialManager::update()
     Utils::Stats::Measure measure(_model.state.stats, COUNTER_SERIAL);
     if (sc.functionMask & SERIAL_FUNCTION_MSP)
     {
-      processMsp(ss);
+      processMsp(ss, _msp);
     }
     if(sc.functionMask & SERIAL_FUNCTION_TELEMETRY_FRSKY && _model.state.telemetryTimer.check())
     {
@@ -178,12 +182,25 @@ int FAST_CODE_ATTR SerialManager::update()
   }
 #endif
 
+#if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
+  Device::Wk2132SerialPort& cameraPort = Device::DroneProtoWk2132::cameraPort();
+  if(cameraPort && _wkCameraState.stream != &cameraPort)
+  {
+    _wkCameraState.stream = &cameraPort;
+  }
+  if(_current == 0 && _wkCameraState.stream)
+  {
+    processMsp(_wkCameraState, _wkCameraMsp, false);
+  }
+#endif
+
   next();
 
   return 1;
 }
 
-void SerialManager::processMsp(SerialPortState& ss)
+void SerialManager::processMsp(SerialPortState& ss,
+  Connect::MspProcessor& processor, bool allowCli)
 {
   size_t len = ss.stream->available();
   if(!len) return;
@@ -194,19 +211,19 @@ void SerialManager::processMsp(SerialPortState& ss)
   char * c = (char*)&buff[0];
   while(len--)
   {
-    bool consumed = _msp.parse(*c, ss.mspRequest);
+    bool consumed = processor.parse(*c, ss.mspRequest);
     if(consumed)
     {
       if(ss.mspRequest.isReady() && ss.mspRequest.isCmd())
       {
-        _msp.processCommand(ss.mspRequest, ss.mspResponse, *ss.stream);
-        _msp.sendResponse(ss.mspResponse, *ss.stream);
-        _msp.postCommand();
+        processor.processCommand(ss.mspRequest, ss.mspResponse, *ss.stream);
+        processor.sendResponse(ss.mspResponse, *ss.stream);
+        processor.postCommand();
         ss.mspRequest = Connect::MspMessage();
         ss.mspResponse = Connect::MspResponse();
       }
     }
-    else
+    else if(allowCli)
     {
       _cli.process(*c, ss.cliCmd, *ss.stream);
     }

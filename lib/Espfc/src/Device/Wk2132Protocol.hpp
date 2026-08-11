@@ -4,8 +4,9 @@
 
 namespace Espfc::Device::Wk2132Protocol {
 
-constexpr uint8_t CHANNEL_CAMERA = 0;
-constexpr uint8_t CHANNEL_UWB = 1;
+// July 28 PCB: UWB is wired to UART1 and camera is wired to UART2.
+constexpr uint8_t CHANNEL_UWB = 0;
+constexpr uint8_t CHANNEL_CAMERA = 1;
 constexpr uint8_t CHANNEL_COUNT = 2;
 
 constexpr uint8_t i2cAddress(bool ia1High, bool ia0High, uint8_t channel, bool fifo)

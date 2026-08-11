@@ -3,19 +3,19 @@
 #include "Device/DroneProtoWk2132.hpp"
 
 #ifndef ESPFC_DRONE_PROTO_WK2132_SDA
-#define ESPFC_DRONE_PROTO_WK2132_SDA 47
+#define ESPFC_DRONE_PROTO_WK2132_SDA 17
 #endif
 #ifndef ESPFC_DRONE_PROTO_WK2132_SCL
-#define ESPFC_DRONE_PROTO_WK2132_SCL 48
+#define ESPFC_DRONE_PROTO_WK2132_SCL 16
 #endif
 #ifndef ESPFC_DRONE_PROTO_WK2132_RESET
 #define ESPFC_DRONE_PROTO_WK2132_RESET -1
 #endif
 #ifndef ESPFC_DRONE_PROTO_WK2132_IRQ
-#define ESPFC_DRONE_PROTO_WK2132_IRQ -1
+#define ESPFC_DRONE_PROTO_WK2132_IRQ 6
 #endif
 #ifndef ESPFC_DRONE_PROTO_WK2132_IA1
-#define ESPFC_DRONE_PROTO_WK2132_IA1 1
+#define ESPFC_DRONE_PROTO_WK2132_IA1 0
 #endif
 #ifndef ESPFC_DRONE_PROTO_WK2132_IA0
 #define ESPFC_DRONE_PROTO_WK2132_IA0 1
@@ -39,7 +39,12 @@
 namespace Espfc::Device::DroneProtoWk2132 {
 namespace {
 
-Wk2132Bridge s_bridge(Wire1);
+static_assert(ESPFC_DRONE_PROTO_WK2132_SDA == ESPFC_I2C_0_SDA,
+  "WK2132 SDA must match the shared FC I2C bus");
+static_assert(ESPFC_DRONE_PROTO_WK2132_SCL == ESPFC_I2C_0_SCL,
+  "WK2132 SCL must match the shared FC I2C bus");
+
+Wk2132Bridge s_bridge(WireInstance);
 
 SerialDeviceConfig serialConfig(uint32_t baud)
 {
@@ -68,6 +73,7 @@ bool begin()
   config.i2cFrequencyHz = ESPFC_DRONE_PROTO_WK2132_I2C_HZ;
   config.i2cTimeoutMs = ESPFC_DRONE_PROTO_WK2132_I2C_TIMEOUT_MS;
   config.oscillatorHz = ESPFC_DRONE_PROTO_WK2132_OSCILLATOR_HZ;
+  config.ownsI2cBus = false;
 
   if(!s_bridge.begin(config))
   {

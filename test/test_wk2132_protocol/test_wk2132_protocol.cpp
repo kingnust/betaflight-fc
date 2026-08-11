@@ -9,11 +9,21 @@ void tearDown() {}
 
 void test_i2c_addresses_match_wk2132_layout()
 {
-  TEST_ASSERT_EQUAL_HEX8(0x70, i2cAddress(true, true, CHANNEL_CAMERA, false));
-  TEST_ASSERT_EQUAL_HEX8(0x71, i2cAddress(true, true, CHANNEL_CAMERA, true));
-  TEST_ASSERT_EQUAL_HEX8(0x72, i2cAddress(true, true, CHANNEL_UWB, false));
-  TEST_ASSERT_EQUAL_HEX8(0x73, i2cAddress(true, true, CHANNEL_UWB, true));
-  TEST_ASSERT_EQUAL_HEX8(0x10, i2cAddress(false, false, CHANNEL_CAMERA, false));
+  TEST_ASSERT_EQUAL_HEX8(0x70, i2cAddress(true, true, 0, false));
+  TEST_ASSERT_EQUAL_HEX8(0x71, i2cAddress(true, true, 0, true));
+  TEST_ASSERT_EQUAL_HEX8(0x72, i2cAddress(true, true, 1, false));
+  TEST_ASSERT_EQUAL_HEX8(0x73, i2cAddress(true, true, 1, true));
+  TEST_ASSERT_EQUAL_HEX8(0x10, i2cAddress(false, false, 0, false));
+}
+
+void test_july_28_pcb_addresses_and_channel_wiring()
+{
+  TEST_ASSERT_EQUAL_UINT8(0, CHANNEL_UWB);
+  TEST_ASSERT_EQUAL_UINT8(1, CHANNEL_CAMERA);
+  TEST_ASSERT_EQUAL_HEX8(0x30, i2cAddress(false, true, CHANNEL_UWB, false));
+  TEST_ASSERT_EQUAL_HEX8(0x31, i2cAddress(false, true, CHANNEL_UWB, true));
+  TEST_ASSERT_EQUAL_HEX8(0x32, i2cAddress(false, true, CHANNEL_CAMERA, false));
+  TEST_ASSERT_EQUAL_HEX8(0x33, i2cAddress(false, true, CHANNEL_CAMERA, true));
 }
 
 void test_common_crystals_produce_exact_115200_baud()
@@ -53,6 +63,7 @@ int main(int argc, char** argv)
 {
   UNITY_BEGIN();
   RUN_TEST(test_i2c_addresses_match_wk2132_layout);
+  RUN_TEST(test_july_28_pcb_addresses_and_channel_wiring);
   RUN_TEST(test_common_crystals_produce_exact_115200_baud);
   RUN_TEST(test_fractional_prescaler_is_rounded);
   RUN_TEST(test_unreachable_baud_is_rejected);

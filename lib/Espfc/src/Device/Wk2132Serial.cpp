@@ -288,7 +288,7 @@ void Wk2132SerialPort::recordFifoStatus(uint8_t value)
   _lastFifoStatus = value;
 }
 
-Wk2132Bridge::Wk2132Bridge(TwoWire& wire):
+Wk2132Bridge::Wk2132Bridge(WireClass& wire):
   _wire(wire),
   _camera(*this, Wk2132Protocol::CHANNEL_CAMERA),
   _uwb(*this, Wk2132Protocol::CHANNEL_UWB)
@@ -298,6 +298,7 @@ Wk2132Bridge::Wk2132Bridge(TwoWire& wire):
 bool Wk2132Bridge::begin(const Wk2132BridgeConfig& config)
 {
   _stats.beginAttempts++;
+  const bool previouslyOwnedBus = _config.ownsI2cBus;
   _config = config;
   _present = false;
   _i2cModeValid = false;
@@ -323,18 +324,33 @@ bool Wk2132Bridge::begin(const Wk2132BridgeConfig& config)
     return false;
   }
 
-  if(_started)
+  if(_started && previouslyOwnedBus)
   {
+#if !defined(ESPFC_I2C_0_SOFT)
     _wire.end();
+#endif
     _started = false;
   }
-  if(!_wire.begin(config.sda, config.scl, config.i2cFrequencyHz))
+
+  if(config.ownsI2cBus)
   {
-    recordBusResult(-1);
-    unlock();
-    return false;
+#if defined(ESPFC_I2C_0_SOFT)
+    _wire.begin(config.sda, config.scl, config.i2cFrequencyHz);
+    _wire.setTimeout(config.i2cTimeoutMs);
+#else
+    if(!_wire.begin(config.sda, config.scl, config.i2cFrequencyHz))
+    {
+      recordBusResult(-1);
+      unlock();
+      return false;
+    }
+    _wire.setTimeOut(config.i2cTimeoutMs);
+#endif
   }
-  _wire.setTimeOut(config.i2cTimeoutMs);
+
+  // A shared bus has already been initialized by Hardware::begin(). Never
+  // reconfigure or stop it here because the barometer, magnetometer, and color
+  // sensor use the same controller and pins.
   _started = true;
 
   if(config.reset >= 0)
@@ -384,9 +400,11 @@ void Wk2132Bridge::end()
   {
     return;
   }
-  if(_started)
+  if(_started && _config.ownsI2cBus)
   {
+#if !defined(ESPFC_I2C_0_SOFT)
     _wire.end();
+#endif
   }
   _started = false;
   if(_mutex != nullptr)

@@ -4,9 +4,9 @@
 
 #include "Device/SerialDevice.h"
 #include "Device/Wk2132Protocol.hpp"
+#include "Target/Target.h"
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -23,6 +23,7 @@ struct Wk2132BridgeConfig
   uint32_t i2cFrequencyHz = 400000;
   uint16_t i2cTimeoutMs = 20;
   uint32_t oscillatorHz = 14745600;
+  bool ownsI2cBus = true;
 };
 
 struct Wk2132BridgeStats
@@ -94,7 +95,7 @@ private:
 class Wk2132Bridge
 {
 public:
-  explicit Wk2132Bridge(TwoWire& wire);
+  explicit Wk2132Bridge(WireClass& wire);
 
   bool begin(const Wk2132BridgeConfig& config);
   void end();
@@ -124,7 +125,7 @@ private:
   size_t writeFifoUnlocked(Wk2132SerialPort& port, const uint8_t* data, size_t length);
   void recordBusResult(int status);
 
-  TwoWire& _wire;
+  WireClass& _wire;
   SemaphoreHandle_t _mutex = nullptr;
   Wk2132BridgeConfig _config;
   Wk2132BridgeStats _stats;

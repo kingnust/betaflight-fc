@@ -80,6 +80,9 @@ struct DroneProtoCommandState
   bool trainerTakeoverLatched = false;
   bool trainerTakeoverBlockedArmed = false;
   bool trainerTakeoverBlockedTrainerArmed = false;
+  bool trainerRecoveryPending = false;
+  uint32_t trainerLinkDropouts = 0;
+  uint32_t trainerLinkRecoveries = 0;
   bool radioArmReleaseRequired = false;
   bool executeInitialized = false;
   bool executeHigh = false;
