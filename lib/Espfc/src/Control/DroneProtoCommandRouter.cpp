@@ -423,6 +423,15 @@ bool DroneProtoCommandRouter::consumePending(DroneProtoCommandState& state, Dron
   return true;
 }
 
+bool DroneProtoCommandRouter::expirePending(
+  DroneProtoCommandState& state, uint32_t nowMs, uint32_t maxAgeMs)
+{
+  if(!state.pending.valid) return false;
+  if(static_cast<uint32_t>(nowMs - state.pending.receivedAtMs) <= maxAgeMs) return false;
+  state.pending.valid = false;
+  return true;
+}
+
 const char * DroneProtoCommandRouter::sourceName(DroneProtoInputSource source)
 {
   switch(source)

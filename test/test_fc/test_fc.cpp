@@ -493,6 +493,35 @@ void test_actuator_arming_failsafe()
   TEST_ASSERT_EQUAL_UINT32(ARMING_DISABLED_RX_FAILSAFE | ARMING_DISABLED_FAILSAFE | ARMING_DISABLED_CALIBRATING, model.state.mode.armingDisabledFlags);
 }
 
+void test_actuator_receiver_loss_flags_clear_after_recovery()
+{
+  Model model;
+  model.state.gyro.present = true;
+  model.config.output.protocol = ESC_PROTOCOL_DSHOT150;
+  model.state.input.frameCount = 10;
+  model.state.input.channelsValid = true;
+  model.state.input.us[AXIS_THRUST] = 1000;
+
+  Actuator actuator(model);
+  actuator.begin();
+  actuator.updateArmingDisabled();
+  TEST_ASSERT_EQUAL_UINT32(0, model.state.mode.armingDisabledFlags);
+
+  model.state.input.rxLoss = true;
+  model.state.input.rxFailSafe = true;
+  model.state.failsafe.phase = FC_FAILSAFE_RX_LOSS_DETECTED;
+  actuator.updateArmingDisabled();
+  TEST_ASSERT_BITS_HIGH(
+    ARMING_DISABLED_RX_FAILSAFE | ARMING_DISABLED_FAILSAFE,
+    model.state.mode.armingDisabledFlags);
+
+  model.state.input.rxLoss = false;
+  model.state.input.rxFailSafe = false;
+  model.state.failsafe.phase = FC_FAILSAFE_IDLE;
+  actuator.updateArmingDisabled();
+  TEST_ASSERT_EQUAL_UINT32(0, model.state.mode.armingDisabledFlags);
+}
+
 void test_actuator_arming_throttle()
 {
   Model model;
@@ -652,6 +681,7 @@ int main(int argc, char **argv)
   RUN_TEST(test_rates_kiss_expo);
   RUN_TEST(test_actuator_arming_gyro_motor_calbration);
   RUN_TEST(test_actuator_arming_failsafe);
+  RUN_TEST(test_actuator_receiver_loss_flags_clear_after_recovery);
   RUN_TEST(test_actuator_arming_throttle);
   RUN_TEST(test_mixer_throttle_limit_none);
   RUN_TEST(test_mixer_throttle_limit_scale);

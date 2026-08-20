@@ -370,6 +370,44 @@ void testNormalRadioTaskAndDirectPriority()
   CHECK(!f.state.trainerTakeoverLatched);
 }
 
+void testCommandDeadlineExpiresWithoutConsumingNewRequest()
+{
+  DroneProtoCommandState state;
+  state.pending.valid = true;
+  state.pending.command = DroneProtoTaskCommand::GO_TO_PRESET_1;
+  state.pending.receivedAtMs = 100;
+
+  CHECK(!DroneProtoCommandRouter::expirePending(state, 600, 500));
+  CHECK(state.pending.valid);
+  CHECK(DroneProtoCommandRouter::expirePending(state, 601, 500));
+  CHECK(!state.pending.valid);
+
+  state.pending.valid = true;
+  state.pending.receivedAtMs = 0xfffffff0u;
+  CHECK(!DroneProtoCommandRouter::expirePending(state, 0x00000010u, 32));
+  CHECK(DroneProtoCommandRouter::expirePending(state, 0x00000011u, 32));
+}
+
+void testDirectControlPreemptsTrainerAndRequiresFreshTrainerEntry()
+{
+  Fixture f;
+  f.engageTrainer();
+
+  f.tick(20, true, true, true);
+  CHECK(f.state.source == DroneProtoInputSource::WIFI_DIRECT);
+  CHECK(!f.state.trainerTakeoverLatched);
+
+  f.tick();
+  CHECK(f.state.source == DroneProtoInputSource::RADIOMASTER);
+  CHECK(!f.state.trainerTakeoverLatched);
+
+  f.radio[10] = 988;
+  f.runFor(120);
+  f.radio[10] = 2012;
+  f.runFor(120);
+  CHECK(f.state.source == DroneProtoInputSource::TRAINER_PHONE);
+}
+
 } // namespace
 
 int main()
@@ -384,6 +422,8 @@ int main()
   testQualifiedLinkLossRecoversOnlyAfterBothArmSourcesAreLow();
   testTrainerTaskUsesSelectorAndRunEdge();
   testNormalRadioTaskAndDirectPriority();
+  testCommandDeadlineExpiresWithoutConsumingNewRequest();
+  testDirectControlPreemptsTrainerAndRequiresFreshTrainerEntry();
 
   if(failures != 0)
   {

@@ -1,5 +1,8 @@
 # ESP-FC Flight Controller
 
+Drone Prototype host simulation and automated safety tests are documented in
+[`docs/drone-proto-software-simulation.md`](docs/drone-proto-software-simulation.md).
+
 The mini, DIY, Low cost, ESP32 based, high performance flight controller for hobbyists.
 
 # Features

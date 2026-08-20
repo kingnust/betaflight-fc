@@ -1,5 +1,6 @@
 #include "Control/Actuator.h"
 #include "Control/OpticalFlowPositionHold.h"
+#include "Control/DroneProtoSafetyPolicy.hpp"
 #include "Utils/Math.hpp"
 #include <algorithm>
 #include <cmath>
@@ -121,10 +122,18 @@ void Actuator::updateArmingDisabled()
   auxSensorFault = auxSensorFault || !_model.opticalFlowActive() || !isFresh(_model.state.aux.flow.lastUpdate, now, 1000);
 #endif
 
+  const DroneProtoReceiverSafetyDecision receiverSafety = evaluateReceiverSafety({
+    _model.state.failsafe.phase != FC_FAILSAFE_IDLE,
+    _model.state.input.rxLoss,
+    _model.state.input.rxFailSafe,
+    _model.state.input.frameCount,
+    _model.state.input.channelsValid,
+  });
+
   _model.setArmingDisabled(ARMING_DISABLED_NO_GYRO,        !_model.state.gyro.present || errors);
-  _model.setArmingDisabled(ARMING_DISABLED_FAILSAFE,        _model.state.failsafe.phase != FC_FAILSAFE_IDLE);
-  _model.setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE,     _model.state.input.rxLoss || _model.state.input.rxFailSafe);
-  _model.setArmingDisabled(ARMING_DISABLED_RX_NO_FRAME,     _model.state.input.frameCount < 5 || !_model.state.input.channelsValid);
+  _model.setArmingDisabled(ARMING_DISABLED_FAILSAFE,        receiverSafety.blockFailsafe);
+  _model.setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE,     receiverSafety.blockReceiver);
+  _model.setArmingDisabled(ARMING_DISABLED_RX_NO_FRAME,     receiverSafety.blockNoFrame);
   _model.setArmingDisabled(ARMING_DISABLED_AUX_SENSOR,      auxSensorFault);
   _model.setArmingDisabled(ARMING_DISABLED_THROTTLE,       !_model.isThrottleLow());
   _model.setArmingDisabled(ARMING_DISABLED_CALIBRATING,     _model.calibrationActive());

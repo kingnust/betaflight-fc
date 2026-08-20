@@ -40,3 +40,4 @@
 .pio/
 .cache/
 compile_commands.json
+tools/fc_simulator/output/

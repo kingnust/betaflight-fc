@@ -173,19 +173,17 @@ void OpticalFlowPositionHold::expirePendingPositionTask(uint32_t nowMs)
 {
   auto& pending = _model.state.commands.pending;
   if(!pending.valid || !isPositionTask(pending.command)) return;
-  if(static_cast<uint32_t>(nowMs - pending.receivedAtMs) > POSITION_TASK_MAX_AGE_MS)
-  {
-    pending.valid = false;
-  }
+  DroneProtoCommandRouter::expirePending(
+    _model.state.commands, nowMs, POSITION_TASK_MAX_AGE_MS);
 }
 
 void OpticalFlowPositionHold::applyPendingPositionTask(uint32_t nowMs)
 {
   auto& commands = _model.state.commands;
   if(!commands.pending.valid) return;
-  if(static_cast<uint32_t>(nowMs - commands.pending.receivedAtMs) > POSITION_TASK_MAX_AGE_MS)
+  if(isPositionTask(commands.pending.command) &&
+     DroneProtoCommandRouter::expirePending(commands, nowMs, POSITION_TASK_MAX_AGE_MS))
   {
-    if(isPositionTask(commands.pending.command)) commands.pending.valid = false;
     return;
   }
 

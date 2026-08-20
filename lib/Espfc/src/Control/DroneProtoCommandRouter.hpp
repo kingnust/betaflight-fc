@@ -101,6 +101,7 @@ class DroneProtoCommandRouter
                       bool trainerSidebandFresh,
                       uint32_t nowMs,
                       DroneProtoCommandState& state);
+    static bool expirePending(DroneProtoCommandState& state, uint32_t nowMs, uint32_t maxAgeMs);
     static bool consumePending(DroneProtoCommandState& state, DroneProtoTaskRequest& request);
     static const char * sourceName(DroneProtoInputSource source);
     static const char * taskName(DroneProtoTaskCommand task);
