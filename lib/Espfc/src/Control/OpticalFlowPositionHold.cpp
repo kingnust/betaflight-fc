@@ -1,6 +1,7 @@
 #include "Control/OpticalFlowPositionHold.h"
 
 #include "Control/DroneProtoCommandRouter.hpp"
+#include "Control/QrLocalization.hpp"
 #include "Model.h"
 #include "Utils/Math.hpp"
 #include <algorithm>
@@ -232,6 +233,12 @@ bool OpticalFlowPositionHold::update()
   state.fault = positionHoldSensorFault(_model, nowMs);
   state.healthy = state.fault == POSHOLD_OK;
   if(state.healthy && armed) updateFlowMeasurement();
+
+  const float localPositionM[3] = {
+    state.positionEarth[0], state.positionEarth[1], _model.state.altitude.height
+  };
+  QrLocalization::update(_model.state.qrLocalization,
+    _model.state.qrLocalizationConfig, localPositionM, state.resetCount, nowMs);
 
   const float speed = std::hypot(state.velocityBody[0], state.velocityBody[1]);
   if(state.active && speed > EXCESSIVE_VELOCITY_MPS)

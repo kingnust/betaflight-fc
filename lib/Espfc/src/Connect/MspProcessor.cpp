@@ -29,8 +29,14 @@ namespace {
 constexpr size_t MSP_RX_MAP_CHANNELS = 8;
 constexpr size_t MSP_RC_CHANNELS = 16;
 constexpr uint16_t MSP2_DRONE_PROTO_CAMERA_QR = 0x3001;
-constexpr uint8_t CAMERA_PROTOCOL_VERSION = 1;
+constexpr uint8_t CAMERA_PROTOCOL_VERSION_V1 = 1;
+constexpr uint8_t CAMERA_PROTOCOL_VERSION_V2 = 2;
 constexpr uint8_t CAMERA_MESSAGE_QR = 1;
+constexpr uint8_t CAMERA_QR_V2_EXTRA_HEADER_SIZE = 11;
+constexpr uint8_t CAMERA_QR_FLAG_GEOMETRY_VALID = 1 << 0;
+constexpr uint8_t CAMERA_QR_FLAG_FULL_RESOLUTION = 1 << 1;
+constexpr uint8_t CAMERA_QR_FLAG_MIRRORED = 1 << 2;
+constexpr uint8_t CAMERA_QR_FLAG_ZBAR_FALLBACK = 1 << 3;
 constexpr uint8_t CAMERA_ACK_ACCEPTED = 0;
 constexpr uint8_t CAMERA_ACK_DUPLICATE = 1;
 constexpr uint8_t CAMERA_ACK_MALFORMED = 2;
@@ -307,6 +313,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
     case MSP2_DRONE_PROTO_CAMERA_QR:
     {
       uint8_t status = CAMERA_ACK_MALFORMED;
+      uint8_t responseVersion = CAMERA_PROTOCOL_VERSION_V2;
       uint16_t sequence = 0;
       if(m.version == MSP_V2 && m.remain() >= 5)
       {
@@ -314,11 +321,37 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         const uint8_t type = m.readU8();
         sequence = m.readU16();
         const uint8_t length = m.readU8();
-        if(version != CAMERA_PROTOCOL_VERSION || type != CAMERA_MESSAGE_QR)
+        responseVersion = version;
+        bool headerValid = true;
+        uint8_t flags = 0;
+        uint16_t centerXPermille = 0;
+        uint16_t centerYPermille = 0;
+        uint16_t sidePermille = 0;
+        uint16_t areaPermille = 0;
+        int16_t rotationCdeg = 0;
+        if(version == CAMERA_PROTOCOL_VERSION_V2)
+        {
+          if(m.remain() < CAMERA_QR_V2_EXTRA_HEADER_SIZE)
+          {
+            headerValid = false;
+          }
+          else
+          {
+            flags = m.readU8();
+            centerXPermille = m.readU16();
+            centerYPermille = m.readU16();
+            sidePermille = m.readU16();
+            areaPermille = m.readU16();
+            rotationCdeg = static_cast<int16_t>(m.readU16());
+          }
+        }
+        if((version != CAMERA_PROTOCOL_VERSION_V1 && version != CAMERA_PROTOCOL_VERSION_V2) ||
+           type != CAMERA_MESSAGE_QR)
         {
           status = CAMERA_ACK_UNSUPPORTED;
         }
-        else if(length == 0 || length > CameraUartState::MAX_PAYLOAD || m.remain() != length)
+        else if(!headerValid || length == 0 || length > CameraUartState::MAX_PAYLOAD ||
+                m.remain() != length)
         {
           status = CAMERA_ACK_MALFORMED;
         }
@@ -340,12 +373,55 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
           }
           if(printable)
           {
-            memcpy(_model.state.cameraUart.payload, candidate, length + 1);
-            _model.state.cameraUart.payloadLength = length;
-            _model.state.cameraUart.lastSequence = sequence;
-            _model.state.cameraUart.acceptedCount++;
-            _model.state.cameraUart.lastUpdate = millis();
-            _model.state.cameraUart.present = true;
+            const uint32_t now = millis();
+            CameraUartState& camera = _model.state.cameraUart;
+            memcpy(camera.payload, candidate, length + 1);
+            camera.protocolVersion = version;
+            camera.payloadLength = length;
+            camera.lastSequence = sequence;
+            camera.geometryValid = version == CAMERA_PROTOCOL_VERSION_V2 &&
+              (flags & CAMERA_QR_FLAG_GEOMETRY_VALID) != 0;
+            camera.fullResolution = (flags & CAMERA_QR_FLAG_FULL_RESOLUTION) != 0;
+            camera.mirrored = (flags & CAMERA_QR_FLAG_MIRRORED) != 0;
+            camera.zbarFallback = (flags & CAMERA_QR_FLAG_ZBAR_FALLBACK) != 0;
+            camera.centerXPermille = centerXPermille;
+            camera.centerYPermille = centerYPermille;
+            camera.sidePermille = sidePermille;
+            camera.areaPermille = areaPermille;
+            camera.rotationCdeg = rotationCdeg;
+            camera.acceptedCount++;
+            camera.lastUpdate = now;
+            camera.present = true;
+
+            if(version == CAMERA_PROTOCOL_VERSION_V2)
+            {
+              Control::QrLocalizationInput input;
+              input.sequence = sequence;
+              input.nowMs = now;
+              input.geometry.valid = camera.geometryValid;
+              input.geometry.mirrored = camera.mirrored;
+              input.geometry.zbarFallback = camera.zbarFallback;
+              input.geometry.centerX = centerXPermille * 0.001f;
+              input.geometry.centerY = centerYPermille * 0.001f;
+              input.geometry.sideFraction = sidePermille * 0.001f;
+              input.geometry.areaFraction = areaPermille * 0.001f;
+              input.geometry.rotationRad = rotationCdeg * (3.14159265358979323846f / 18000.0f);
+              input.localPositionM[0] = _model.state.positionHold.positionEarth[0];
+              input.localPositionM[1] = _model.state.positionHold.positionEarth[1];
+              input.localPositionM[2] = _model.state.altitude.height;
+              input.localResetCount = _model.state.positionHold.resetCount;
+              input.yawRad = _model.state.attitude.euler[AXIS_YAW];
+              input.rollRad = _model.state.attitude.euler[AXIS_ROLL];
+              input.pitchRad = _model.state.attitude.euler[AXIS_PITCH];
+              input.rangeValid = _model.state.aux.range.lastUpdate != 0 &&
+                now - _model.state.aux.range.lastUpdate <= 200 &&
+                _model.state.aux.range.distanceMm >= 50 &&
+                _model.state.aux.range.distanceMm <= 8000;
+              input.rangeM = _model.state.aux.range.distanceMm * 0.001f;
+              Control::QrLocalization::ingest(
+                _model.state.qrLocalization, _model.state.qrLocalizationConfig,
+                candidate, input);
+            }
             status = CAMERA_ACK_ACCEPTED;
           }
           else
@@ -358,7 +434,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       {
         _model.state.cameraUart.rejectedCount++;
       }
-      r.writeU8(CAMERA_PROTOCOL_VERSION);
+      r.writeU8(responseVersion);
       r.writeU8(status);
       r.writeU16(sequence);
       break;

@@ -10,6 +10,7 @@
 #include "Control/Pid.h"
 #include "Control/DroneProtoCommandRouter.hpp"
 #include "Control/OpticalFlowPositionHold.h"
+#include "Control/QrLocalization.hpp"
 #include "Diagnostics/DroneProtoEventLog.hpp"
 #include "Kalman.h"
 #include "Utils/Filter.h"
@@ -572,7 +573,17 @@ struct CameraUartState
 {
   static constexpr size_t MAX_PAYLOAD = 96;
   bool present = false;
+  uint8_t protocolVersion = 0;
   uint16_t lastSequence = 0;
+  bool geometryValid = false;
+  bool fullResolution = false;
+  bool mirrored = false;
+  bool zbarFallback = false;
+  uint16_t centerXPermille = 0;
+  uint16_t centerYPermille = 0;
+  uint16_t sidePermille = 0;
+  uint16_t areaPermille = 0;
+  int16_t rotationCdeg = 0;
   uint8_t payloadLength = 0;
   char payload[MAX_PAYLOAD + 1] = {};
   uint32_t acceptedCount = 0;
@@ -602,6 +613,8 @@ struct ModelState
 
   AltitudeState altitude;
   Control::OpticalFlowPositionHoldState positionHold;
+  Control::QrLocalizationConfig qrLocalizationConfig;
+  Control::QrLocalizationState qrLocalization;
   Diagnostics::EventLogState eventLog;
 
   SetpointState setpoint;

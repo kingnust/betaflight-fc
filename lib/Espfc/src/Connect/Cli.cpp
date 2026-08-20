@@ -1310,6 +1310,9 @@ void Cli::execute(CliCmd& cmd, Stream& s)
       PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
       PSTR(" rpm [telemetry 0|1|filter 0-3]"),
       PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"), PSTR(" rxstatus"),
+#if defined(ESPFC_DRONE_PROTO_CAMERA_UART)
+      PSTR(" camstatus"), PSTR(" qrloc [clear|enable 0|1|mount down|front]"),
+#endif
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_WK2132)
       PSTR(" wk2132 [retry|clear camera|clear uwb]"),
 #endif
@@ -2534,6 +2537,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     const uint32_t now = millis();
     s.print(F("camera_uart: present="));
     s.print(camera.present ? 1 : 0);
+    s.print(F(" protocol="));
+    s.print(camera.protocolVersion);
     s.print(F(" age="));
     printAge(s, camera.lastUpdate, now);
     s.print(F(" seq="));
@@ -2547,6 +2552,102 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F("             qr=\""));
     s.print(camera.payload);
     s.println(F("\""));
+    s.print(F("             geometry="));
+    s.print(camera.geometryValid ? 1 : 0);
+    s.print(F(" center="));
+    s.print(camera.centerXPermille);
+    s.print(',');
+    s.print(camera.centerYPermille);
+    s.print(F(" side="));
+    s.print(camera.sidePermille);
+    s.print(F(" area="));
+    s.print(camera.areaPermille);
+    s.print(F(" rotation_cdeg="));
+    s.print(camera.rotationCdeg);
+    s.print(F(" source="));
+    s.println(camera.zbarFallback ? F("ZBAR") : F("QUIRC"));
+  }
+  else if(strcmp_P(cmd.args[0], PSTR("qrloc")) == 0)
+  {
+    auto& config = _model.state.qrLocalizationConfig;
+    auto& localization = _model.state.qrLocalization;
+    if(cmd.args[1] && strcmp_P(cmd.args[1], PSTR("clear")) == 0)
+    {
+      Control::QrLocalization::reset(localization);
+      s.println(F("QR LOCALIZATION CLEARED"));
+    }
+    else if(cmd.args[1] && cmd.args[2] && strcmp_P(cmd.args[1], PSTR("enable")) == 0)
+    {
+      config.enabled = atoi(cmd.args[2]) != 0;
+    }
+    else if(cmd.args[1] && cmd.args[2] && strcmp_P(cmd.args[1], PSTR("mount")) == 0)
+    {
+      if(strcmp_P(cmd.args[2], PSTR("down")) == 0)
+        config.mount = Control::QrCameraMount::DOWNWARD;
+      else if(strcmp_P(cmd.args[2], PSTR("front")) == 0)
+        config.mount = Control::QrCameraMount::FORWARD;
+      else
+        s.println(F("mount must be down or front"));
+    }
+
+    const uint32_t now = millis();
+    s.print(F("qrloc: enabled="));
+    s.print(config.enabled ? 1 : 0);
+    s.print(F(" mount="));
+    s.print(Control::QrLocalization::mountName(config.mount));
+    s.print(F(" valid="));
+    s.print(localization.valid ? 1 : 0);
+    s.print(F(" fresh="));
+    s.print(Control::QrLocalization::fresh(localization, config, now) ? 1 : 0);
+    s.print(F(" age="));
+    printAge(s, localization.lastObservationAtMs, now);
+    s.print(F(" confidence="));
+    s.print(localization.confidence, 2);
+    s.print(F(" reject="));
+    s.println(Control::QrLocalization::rejectName(localization.lastReject));
+    s.print(F("       landmark="));
+    s.print(localization.lastLandmarkId[0] ? localization.lastLandmarkId : "none");
+    s.print(F(" world="));
+    s.print(localization.positionWorldM[0], 3);
+    s.print(',');
+    s.print(localization.positionWorldM[1], 3);
+    s.print(',');
+    s.print(localization.positionWorldM[2], 3);
+    s.print(F(" observed="));
+    s.print(localization.observedWorldM[0], 3);
+    s.print(',');
+    s.print(localization.observedWorldM[1], 3);
+    s.print(',');
+    s.println(localization.observedWorldM[2], 3);
+    s.print(F("       offset="));
+    s.print(localization.mapOffsetM[0], 3);
+    s.print(',');
+    s.print(localization.mapOffsetM[1], 3);
+    s.print(',');
+    s.print(localization.mapOffsetM[2], 3);
+    s.print(F(" range="));
+    s.print(localization.cameraRangeM, 3);
+    s.print(F(" innovation="));
+    s.print(localization.innovationM, 3);
+    s.print(F(" heading="));
+    if(localization.headingValid) s.println(localization.headingWorldRad * 57.2957795f, 1);
+    else s.println(F("unavailable"));
+    s.print(F("       accepted="));
+    s.print(localization.acceptedCount);
+    s.print(F(" rejected="));
+    s.print(localization.rejectedCount);
+    s.print(F(" non_landmark="));
+    s.print(localization.nonLandmarkCount);
+    s.print(F(" format="));
+    s.print(localization.formatRejectCount);
+    s.print(F(" geometry="));
+    s.print(localization.geometryRejectCount);
+    s.print(F(" range="));
+    s.print(localization.rangeRejectCount);
+    s.print(F(" tilt="));
+    s.print(localization.tiltRejectCount);
+    s.print(F(" outlier="));
+    s.println(localization.outlierRejectCount);
   }
 #endif
   else if(strcmp_P(cmd.args[0], PSTR("task")) == 0)

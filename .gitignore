@@ -41,3 +41,4 @@
 .cache/
 compile_commands.json
 tools/fc_simulator/output/
+tools/qr_localization/generated_landmarks/
