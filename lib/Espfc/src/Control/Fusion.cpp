@@ -11,6 +11,11 @@ int Fusion::begin()
 {
   _model.state.gyroPoseQ = Quaternion();
 
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+  _magSampleCount = _model.state.mag.sampleCount;
+  _magYawCorrection.reset();
+#endif
+
   _madgwick.begin(_model.state.accel.timer.rate);
   _madgwick.setKp(_model.config.fusion.gain * 0.05f);
 
@@ -129,19 +134,92 @@ void Fusion::kalmanFusion()
 void Fusion::complementaryFusion()
 {
   _model.state.pose = _model.state.accel.adc.accelToEuler();
-  _model.state.pose.z = _model.state.attitude.euler.z;
   const float dt = _model.state.gyro.timer.intervalf;
   const float alpha = 0.002f;
-  for(size_t i = 0; i < 3; i++)
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+  constexpr size_t fusedAxisCount = 2;
+#else
+  _model.state.pose.z = _model.state.attitude.euler.z;
+  constexpr size_t fusedAxisCount = 3;
+#endif
+  for(size_t i = 0; i < fusedAxisCount; i++)
   {
     float angle = (_model.state.attitude.euler[i] + _model.state.gyro.adc[i] * dt) * (1.f - alpha) + _model.state.pose[i] * alpha;
     if(angle > PI) angle -= TWO_PI;
     if(angle < -PI) angle += TWO_PI;
     _model.state.attitude.euler.set(i, angle);
   }
+
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+  float yaw = _model.state.attitude.euler.z + _model.state.gyro.adc.z * dt;
+  if(yaw > PI) yaw -= TWO_PI;
+  if(yaw < -PI) yaw += TWO_PI;
+  yaw = correctYawWithMag(yaw);
+  _model.state.attitude.euler.z = yaw;
+  _model.state.pose.z = yaw;
+#endif
   _model.state.attitude.quaternion = _model.state.attitude.euler.eulerToQuaternion();
   //_model.state.attitude.euler.eulerFromQuaternion(_model.state.attitude.quaternion); // causes NaN
 }
+
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+float Fusion::correctYawWithMag(float predictedYaw)
+{
+  auto& mag = _model.state.mag;
+
+  if (!_model.magActive())
+  {
+    _magYawCorrection.reset();
+    _magSampleCount = mag.sampleCount;
+    return predictedYaw;
+  }
+
+  if (mag.calibrationState != CALIBRATION_IDLE || !mag.calibrationValid)
+  {
+    _magYawCorrection.reset();
+    _magSampleCount = mag.sampleCount;
+    return predictedYaw;
+  }
+
+  if (!mag.dataValid || mag.sampleCount == _magSampleCount) return predictedYaw;
+  _magSampleCount = mag.sampleCount;
+
+  const float cosX2 = cosf(_model.state.pose.x * 0.5f);
+  const float sinX2 = sinf(_model.state.pose.x * 0.5f);
+  const float cosY2 = cosf(_model.state.pose.y * 0.5f);
+  const float sinY2 = sinf(_model.state.pose.y * 0.5f);
+
+  Quaternion levelRotation;
+  levelRotation.w = cosX2 * cosY2;
+  levelRotation.x = sinX2 * cosY2;
+  levelRotation.y = cosX2 * sinY2;
+  levelRotation.z = -sinX2 * sinY2;
+
+  const VectorFloat leveledField = mag.adc.getRotated(levelRotation);
+  mag.pose = leveledField;
+
+  const float fieldStrength = mag.adc.getMagnitude();
+  const float horizontalFieldStrength = sqrtf(
+    leveledField.x * leveledField.x + leveledField.y * leveledField.y);
+  const float magneticHeading = MagneticYawCorrection::bmm150Heading(
+    leveledField.x, leveledField.y);
+  _model.state.pose.z = magneticHeading;
+
+  float correctedYaw = predictedYaw;
+  if (_magYawCorrection.update(
+      fieldStrength,
+      horizontalFieldStrength,
+      magneticHeading,
+      _model.isModeActive(MODE_ARMED),
+      predictedYaw,
+      correctedYaw))
+  {
+    return correctedYaw;
+  }
+
+  return predictedYaw;
+}
+#endif
 
 void Fusion::complementaryFusionOld()
 {

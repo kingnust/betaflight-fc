@@ -21,6 +21,8 @@ int MagSensor::begin()
   // by default use eeprom calibration settings
   _model.state.mag.calibrationState = CALIBRATION_IDLE;
   _model.state.mag.calibrationValid = true;
+  _model.state.mag.dataValid = false;
+  _model.state.mag.sampleCount = 0;
 
   _model.logger.info()
       .log(F("MAG INIT"))
@@ -35,9 +37,17 @@ int MagSensor::update()
 {
   int status = read();
 
-  if (status) filter();
+  if (status > 0)
+  {
+    if (!filter()) return 0;
+    _model.state.mag.dataValid = true;
+    _model.state.mag.sampleCount++;
+    return 1;
+  }
 
-  return status;
+  if (status < 0) _model.state.mag.dataValid = false;
+
+  return 0;
 }
 
 int MagSensor::read()
@@ -45,9 +55,7 @@ int MagSensor::read()
   if (!_mag || !_model.magActive() || !_model.state.mag.timer.check()) return 0;
 
   Utils::Stats::Measure measure(_model.state.stats, COUNTER_MAG_READ);
-  _mag->readMag(_model.state.mag.raw);
-
-  return 1;
+  return _mag->readMag(_model.state.mag.raw) ? 1 : -1;
 }
 
 int MagSensor::filter()

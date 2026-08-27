@@ -218,6 +218,9 @@ struct MagState
   bool present;
   int rate;
 
+  bool dataValid = false;
+  uint32_t sampleCount = 0;
+
   VectorInt16 raw;
   VectorFloat adc;
   Utils::Filter filter[3];

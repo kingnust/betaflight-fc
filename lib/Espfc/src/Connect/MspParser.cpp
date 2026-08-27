@@ -92,7 +92,7 @@ void MspParser::parse(char c, MspMessage& msg)
       break;
 
     case MSP_STATE_CHECKSUM_V1:
-      msg.state = msg.checksum == c ? MSP_STATE_RECEIVED : MSP_STATE_IDLE;
+      msg.state = msg.checksum == static_cast<uint8_t>(c) ? MSP_STATE_RECEIVED : MSP_STATE_IDLE;
       break;
 
     case MSP_STATE_HEADER_V2:
@@ -123,7 +123,7 @@ void MspParser::parse(char c, MspMessage& msg)
       break;
 
     case MSP_STATE_CHECKSUM_V2:
-      msg.state = msg.checksum2 == c ? MSP_STATE_RECEIVED : MSP_STATE_IDLE;
+      msg.state = msg.checksum2 == static_cast<uint8_t>(c) ? MSP_STATE_RECEIVED : MSP_STATE_IDLE;
       break;
 
     default:

@@ -24,12 +24,14 @@ public:
   static uint32_t validFrames();
   static uint32_t badCrcFrames();
   static uint32_t badLinkFrames();
+  static uint32_t badSourceFrames();
   static uint32_t badSizeFrames();
   static uint32_t badValueFrames();
   static uint32_t duplicateFrames();
   static uint32_t outOfOrderFrames();
   static uint32_t missedFrames();
   static uint16_t lastSequence();
+  static bool lastSourceMac(uint8_t *data, size_t len);
 };
 
 } // namespace Espfc::Device

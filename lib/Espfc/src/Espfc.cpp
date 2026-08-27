@@ -186,7 +186,13 @@ void Espfc::applyDroneProtoTargetConfig()
   _model.config.gyro.bus = BUS_SPI;
   _model.config.gyro.dev = GYRO_AUTO;
   _model.config.gyro.dlpf = GYRO_DLPF_256;
+#if defined(ESPFC_DRONE_PROTO_IMU_ALIGN_CW270)
+  // Exchange X/Y and correct both horizontal tilt directions while keeping
+  // Z upright and the IMU frame right-handed for flight control.
+  _model.config.gyro.align = ALIGN_CW270_DEG;
+#else
   _model.config.gyro.align = ALIGN_DEFAULT;
+#endif
   _model.config.gyro.filter = FilterConfig(FILTER_PT1, 100);
   _model.config.gyro.filter2 = FilterConfig(FILTER_PT1, 100);
   _model.config.gyro.filter3 = FilterConfig(FILTER_NONE, 0);
@@ -215,7 +221,13 @@ void Espfc::applyDroneProtoTargetConfig()
 #if defined(ESPFC_DRONE_PROTO_ENABLE_BMM150)
   _model.config.mag.bus = BUS_I2C;
   _model.config.mag.dev = MAG_BMM150;
+#if defined(ESPFC_DRONE_PROTO_MAG_ALIGN_CW0)
+  // With the package mark at the airframe's top-left: +X forward, +Y right,
+  // and +Z down, matching the flight-controller body frame.
+  _model.config.mag.align = ALIGN_CW0_DEG;
+#else
   _model.config.mag.align = ALIGN_DEFAULT;
+#endif
 #else
   _model.config.mag.dev = MAG_NONE;
 #endif
@@ -362,7 +374,12 @@ void Espfc::forceDroneProtoBenchConfig()
   _model.config.gyro.bus = BUS_SPI;
   _model.config.gyro.dev = GYRO_AUTO;
   _model.config.gyro.dlpf = GYRO_DLPF_256;
+#if defined(ESPFC_DRONE_PROTO_IMU_ALIGN_CW270)
+  // AccelSensor and GyroSensor both consume this shared IMU alignment.
+  _model.config.gyro.align = ALIGN_CW270_DEG;
+#else
   _model.config.gyro.align = ALIGN_DEFAULT;
+#endif
   _model.config.gyro.filter = FilterConfig(FILTER_PT1, 100);
   _model.config.gyro.filter2 = FilterConfig(FILTER_PT1, 100);
   _model.config.gyro.filter3 = FilterConfig(FILTER_NONE, 0);
@@ -396,7 +413,11 @@ void Espfc::forceDroneProtoBenchConfig()
 #if defined(ESPFC_DRONE_PROTO_ENABLE_BMM150)
   _model.config.mag.bus = BUS_I2C;
   _model.config.mag.dev = MAG_BMM150;
+#if defined(ESPFC_DRONE_PROTO_MAG_ALIGN_CW0)
+  _model.config.mag.align = ALIGN_CW0_DEG;
+#else
   _model.config.mag.align = ALIGN_DEFAULT;
+#endif
 #else
   _model.config.mag.dev = MAG_NONE;
 #endif

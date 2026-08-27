@@ -85,6 +85,8 @@ int MagBMM150::readMag(VectorInt16& v)
   v.y = compensateY(rawY, rhall);
   v.z = compensateZ(rawZ, rhall);
 
+  if (v.x == BMM150_OVERFLOW_OUTPUT || v.y == BMM150_OVERFLOW_OUTPUT || v.z == BMM150_OVERFLOW_OUTPUT) return 0;
+
   return 1;
 }
 

@@ -3,6 +3,9 @@
 #include "Model.h"
 #include <Madgwick.h>
 #include <Mahony.h>
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+#include "Control/MagneticYawCorrection.hpp"
+#endif
 
 namespace Espfc {
 
@@ -30,10 +33,18 @@ class Fusion
     void mahonyFusion();
 
   private:
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+    float correctYawWithMag(float predictedYaw);
+#endif
+
     Model& _model;
     bool _first;
     Madgwick _madgwick;
     Mahony _mahony;
+#if defined(ESPFC_DRONE_PROTO_MAG_YAW)
+    uint32_t _magSampleCount = 0;
+    MagneticYawCorrection _magYawCorrection;
+#endif
 };
 
 }

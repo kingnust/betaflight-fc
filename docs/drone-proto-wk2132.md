@@ -54,10 +54,10 @@ Confirm that both peripherals use 3.3 V UART logic.
 
 ## Build and diagnostics
 
-Build the opt-in environment:
+The WK2132 environment is the project default. Build it with:
 
 ```powershell
-& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe" run -e drone_proto_esp32s3_wk2132_experimental
+& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe" run
 ```
 
 After flashing that environment, enter the FC CLI and run:

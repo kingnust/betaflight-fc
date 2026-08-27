@@ -1,6 +1,7 @@
 #if defined(ESP32) && defined(ESPFC_DRONE_PROTO_ENABLE_DIRECT_WIFI_RC)
 
 #include "DroneProtoDirectRc.hpp"
+#include "DroneProtoDirectRcProtocol.hpp"
 
 #include <WiFi.h>
 #include <esp_now.h>
@@ -22,35 +23,12 @@
 namespace Espfc::Device {
 namespace {
 
-constexpr uint32_t kMagic = 0x31524344UL;  // "DRC1" little-endian
-constexpr uint8_t kVersion = 2;
-constexpr size_t kPacketChannels = 16;
-constexpr uint16_t kMinUs = 988;
-constexpr uint16_t kMidUs = 1500;
-constexpr uint16_t kMaxUs = 2012;
-
-enum class PacketMode : uint8_t
-{
-  NONE,
-  TRAINER_SIDEBAND,
-  DIRECT,
-};
-
-struct __attribute__((packed)) DirectRcPacket
-{
-  uint32_t magic;
-  uint32_t linkId;
-  uint8_t version;
-  uint8_t channelCount;
-  uint8_t flags;
-  uint8_t reserved;
-  uint16_t sequence;
-  uint32_t timeMs;
-  uint16_t channels[kPacketChannels];
-  uint16_t crc;
-};
-
-static_assert(sizeof(DirectRcPacket) == 52, "Direct RC packet layout changed");
+namespace Protocol = DirectRcProtocol;
+using PacketMode = Protocol::Mode;
+using DirectRcPacket = Protocol::Packet;
+constexpr size_t kPacketChannels = Protocol::CHANNEL_COUNT;
+constexpr uint16_t kMinUs = Protocol::CHANNEL_MIN_US;
+constexpr uint16_t kMidUs = Protocol::CHANNEL_MID_US;
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 bool s_ready = false;
@@ -64,26 +42,15 @@ uint32_t s_received = 0;
 uint32_t s_valid = 0;
 uint32_t s_badCrc = 0;
 uint32_t s_badLink = 0;
+uint32_t s_badSource = 0;
 uint32_t s_badSize = 0;
 uint32_t s_badValue = 0;
 uint32_t s_duplicate = 0;
 uint32_t s_outOfOrder = 0;
 uint32_t s_missed = 0;
 bool s_hasSeq = false;
-
-uint16_t crc16Ccitt(const uint8_t *data, size_t len)
-{
-  uint16_t crc = 0xffff;
-  while(len--)
-  {
-    crc ^= static_cast<uint16_t>(*data++) << 8;
-    for(uint8_t i = 0; i < 8; ++i)
-    {
-      crc = (crc & 0x8000) ? static_cast<uint16_t>((crc << 1) ^ 0x1021) : static_cast<uint16_t>(crc << 1);
-    }
-  }
-  return crc;
-}
+uint8_t s_lastSourceMac[6] = {};
+bool s_hasSourceMac = false;
 
 void setSafeChannels()
 {
@@ -92,29 +59,6 @@ void setSafeChannels()
     s_channels[i] = kMidUs;
   }
   s_channels[2] = kMinUs;
-}
-
-bool validChannelValues(const DirectRcPacket& packet)
-{
-  for(size_t i = 0; i < kPacketChannels; ++i)
-  {
-    if(packet.channels[i] < kMinUs || packet.channels[i] > kMaxUs)
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool decodePacketMode(uint8_t flags, PacketMode& mode)
-{
-  switch(flags)
-  {
-    case 0x00: mode = PacketMode::NONE; return true;
-    case 0x03: mode = PacketMode::DIRECT; return true;
-    case 0x04: mode = PacketMode::TRAINER_SIDEBAND; return true;
-    default: return false;
-  }
 }
 
 bool isFreshTimestamp(uint32_t nowMs, uint32_t lastMs)
@@ -138,45 +82,39 @@ uint32_t timestampAgeMs(uint32_t nowMs, uint32_t lastMs)
 
 void onReceive(const uint8_t *mac, const uint8_t *data, int len)
 {
-  (void)mac;
   portENTER_CRITICAL_ISR(&s_mux);
   ++s_received;
+  if(mac != nullptr)
+  {
+    std::memcpy(s_lastSourceMac, mac, sizeof(s_lastSourceMac));
+    s_hasSourceMac = true;
+  }
   portEXIT_CRITICAL_ISR(&s_mux);
 
-  if(data == nullptr || len != static_cast<int>(sizeof(DirectRcPacket)))
+  if(!Protocol::trustedSourceMac(mac))
   {
     portENTER_CRITICAL_ISR(&s_mux);
-    ++s_badSize;
+    ++s_badSource;
     portEXIT_CRITICAL_ISR(&s_mux);
     return;
   }
 
   DirectRcPacket packet;
-  std::memcpy(&packet, data, sizeof(packet));
-
-  const uint16_t crc = crc16Ccitt(reinterpret_cast<const uint8_t*>(&packet), sizeof(packet) - sizeof(packet.crc));
-  if(crc != packet.crc || packet.magic != kMagic || packet.version != kVersion || packet.channelCount != kPacketChannels)
-  {
-    portENTER_CRITICAL_ISR(&s_mux);
-    ++s_badCrc;
-    portEXIT_CRITICAL_ISR(&s_mux);
-    return;
-  }
-
-  if(packet.linkId != ESPFC_DRONE_PROTO_DIRECT_RC_LINK_ID)
-  {
-    portENTER_CRITICAL_ISR(&s_mux);
-    ++s_badLink;
-    portEXIT_CRITICAL_ISR(&s_mux);
-    return;
-  }
-
   PacketMode packetMode = PacketMode::NONE;
-  if(!decodePacketMode(packet.flags, packetMode) ||
-     (packetMode != PacketMode::NONE && !validChannelValues(packet)))
+  const Protocol::DecodeResult decodeResult = Protocol::decode(
+    data, len < 0 ? 0u : static_cast<size_t>(len),
+    ESPFC_DRONE_PROTO_DIRECT_RC_LINK_ID, packet, packetMode);
+  if(decodeResult != Protocol::DecodeResult::ACCEPTED)
   {
     portENTER_CRITICAL_ISR(&s_mux);
-    ++s_badValue;
+    switch(decodeResult)
+    {
+      case Protocol::DecodeResult::BAD_SIZE: ++s_badSize; break;
+      case Protocol::DecodeResult::BAD_LINK: ++s_badLink; break;
+      case Protocol::DecodeResult::BAD_VALUE: ++s_badValue; break;
+      case Protocol::DecodeResult::BAD_CRC_OR_HEADER: ++s_badCrc; break;
+      case Protocol::DecodeResult::ACCEPTED: break;
+    }
     portEXIT_CRITICAL_ISR(&s_mux);
     return;
   }
@@ -382,6 +320,14 @@ uint32_t DroneProtoDirectRc::badLinkFrames()
   return value;
 }
 
+uint32_t DroneProtoDirectRc::badSourceFrames()
+{
+  portENTER_CRITICAL(&s_mux);
+  const uint32_t value = s_badSource;
+  portEXIT_CRITICAL(&s_mux);
+  return value;
+}
+
 uint32_t DroneProtoDirectRc::badSizeFrames()
 {
   portENTER_CRITICAL(&s_mux);
@@ -428,6 +374,16 @@ uint16_t DroneProtoDirectRc::lastSequence()
   const uint16_t value = s_lastSeq;
   portEXIT_CRITICAL(&s_mux);
   return value;
+}
+
+bool DroneProtoDirectRc::lastSourceMac(uint8_t *data, size_t len)
+{
+  if(data == nullptr || len < sizeof(s_lastSourceMac)) return false;
+  portENTER_CRITICAL(&s_mux);
+  const bool available = s_hasSourceMac;
+  if(available) std::memcpy(data, s_lastSourceMac, sizeof(s_lastSourceMac));
+  portEXIT_CRITICAL(&s_mux);
+  return available;
 }
 
 } // namespace Espfc::Device

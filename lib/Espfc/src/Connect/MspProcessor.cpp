@@ -1,4 +1,5 @@
 #include "Connect/MspProcessor.hpp"
+#include "Connect/DroneProtoCameraProtocol.hpp"
 #include "Hardware.h"
 #include "Device/DroneProtoServo.hpp"
 #include <platform.h>
@@ -28,19 +29,7 @@ namespace {
 // Drone Prototype retains 32 inputs internally for CRSF subset compatibility.
 constexpr size_t MSP_RX_MAP_CHANNELS = 8;
 constexpr size_t MSP_RC_CHANNELS = 16;
-constexpr uint16_t MSP2_DRONE_PROTO_CAMERA_QR = 0x3001;
-constexpr uint8_t CAMERA_PROTOCOL_VERSION_V1 = 1;
-constexpr uint8_t CAMERA_PROTOCOL_VERSION_V2 = 2;
-constexpr uint8_t CAMERA_MESSAGE_QR = 1;
-constexpr uint8_t CAMERA_QR_V2_EXTRA_HEADER_SIZE = 11;
-constexpr uint8_t CAMERA_QR_FLAG_GEOMETRY_VALID = 1 << 0;
-constexpr uint8_t CAMERA_QR_FLAG_FULL_RESOLUTION = 1 << 1;
-constexpr uint8_t CAMERA_QR_FLAG_MIRRORED = 1 << 2;
-constexpr uint8_t CAMERA_QR_FLAG_ZBAR_FALLBACK = 1 << 3;
-constexpr uint8_t CAMERA_ACK_ACCEPTED = 0;
-constexpr uint8_t CAMERA_ACK_DUPLICATE = 1;
-constexpr uint8_t CAMERA_ACK_MALFORMED = 2;
-constexpr uint8_t CAMERA_ACK_UNSUPPORTED = 3;
+namespace CameraProtocol = Espfc::Connect::DroneProtoCameraProtocol;
 
 enum SerialSpeedIndex {
   SERIAL_SPEED_INDEX_AUTO = 0,
@@ -310,90 +299,55 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
   switch(m.cmd)
   {
 #if defined(ESPFC_DRONE_PROTO_CAMERA_UART)
-    case MSP2_DRONE_PROTO_CAMERA_QR:
+    case CameraProtocol::MSP2_CAMERA_QR:
     {
-      uint8_t status = CAMERA_ACK_MALFORMED;
-      uint8_t responseVersion = CAMERA_PROTOCOL_VERSION_V2;
+      uint8_t status = CameraProtocol::ACK_MALFORMED;
+      uint8_t responseVersion = CameraProtocol::VERSION_V2;
       uint16_t sequence = 0;
-      if(m.version == MSP_V2 && m.remain() >= 5)
+      if(m.version == MSP_V2)
       {
-        const uint8_t version = m.readU8();
-        const uint8_t type = m.readU8();
-        sequence = m.readU16();
-        const uint8_t length = m.readU8();
-        responseVersion = version;
-        bool headerValid = true;
-        uint8_t flags = 0;
-        uint16_t centerXPermille = 0;
-        uint16_t centerYPermille = 0;
-        uint16_t sidePermille = 0;
-        uint16_t areaPermille = 0;
-        int16_t rotationCdeg = 0;
-        if(version == CAMERA_PROTOCOL_VERSION_V2)
+        CameraProtocol::QrMessage cameraMessage;
+        const CameraProtocol::DecodeResult decodeResult = CameraProtocol::decodeQrPayload(
+          &m.buffer[m.read], static_cast<size_t>(m.remain()), cameraMessage);
+        responseVersion = cameraMessage.version;
+        sequence = cameraMessage.sequence;
+        if(decodeResult == CameraProtocol::DecodeResult::UNSUPPORTED)
         {
-          if(m.remain() < CAMERA_QR_V2_EXTRA_HEADER_SIZE)
+          status = CameraProtocol::ACK_UNSUPPORTED;
+        }
+        else if(decodeResult == CameraProtocol::DecodeResult::ACCEPTED)
+        {
+          static_assert(CameraUartState::MAX_PAYLOAD == CameraProtocol::MAX_TEXT_LENGTH,
+            "Camera state and wire protocol payload limits differ");
+          if(_model.state.cameraUart.present && sequence == _model.state.cameraUart.lastSequence)
           {
-            headerValid = false;
+            status = CameraProtocol::ACK_DUPLICATE;
+            _model.state.cameraUart.duplicateCount++;
+            _model.state.cameraUart.lastUpdate = millis();
           }
           else
           {
-            flags = m.readU8();
-            centerXPermille = m.readU16();
-            centerYPermille = m.readU16();
-            sidePermille = m.readU16();
-            areaPermille = m.readU16();
-            rotationCdeg = static_cast<int16_t>(m.readU16());
-          }
-        }
-        if((version != CAMERA_PROTOCOL_VERSION_V1 && version != CAMERA_PROTOCOL_VERSION_V2) ||
-           type != CAMERA_MESSAGE_QR)
-        {
-          status = CAMERA_ACK_UNSUPPORTED;
-        }
-        else if(!headerValid || length == 0 || length > CameraUartState::MAX_PAYLOAD ||
-                m.remain() != length)
-        {
-          status = CAMERA_ACK_MALFORMED;
-        }
-        else if(_model.state.cameraUart.present && sequence == _model.state.cameraUart.lastSequence)
-        {
-          status = CAMERA_ACK_DUPLICATE;
-          _model.state.cameraUart.duplicateCount++;
-          _model.state.cameraUart.lastUpdate = millis();
-        }
-        else
-        {
-          bool printable = true;
-          char candidate[CameraUartState::MAX_PAYLOAD + 1] = {};
-          for(uint8_t i = 0; i < length; i++)
-          {
-            const uint8_t value = m.readU8();
-            if(value < 32 || value > 126) printable = false;
-            candidate[i] = static_cast<char>(value);
-          }
-          if(printable)
-          {
             const uint32_t now = millis();
             CameraUartState& camera = _model.state.cameraUart;
-            memcpy(camera.payload, candidate, length + 1);
-            camera.protocolVersion = version;
-            camera.payloadLength = length;
+            memcpy(camera.payload, cameraMessage.payload, cameraMessage.length + 1);
+            camera.protocolVersion = cameraMessage.version;
+            camera.payloadLength = cameraMessage.length;
             camera.lastSequence = sequence;
-            camera.geometryValid = version == CAMERA_PROTOCOL_VERSION_V2 &&
-              (flags & CAMERA_QR_FLAG_GEOMETRY_VALID) != 0;
-            camera.fullResolution = (flags & CAMERA_QR_FLAG_FULL_RESOLUTION) != 0;
-            camera.mirrored = (flags & CAMERA_QR_FLAG_MIRRORED) != 0;
-            camera.zbarFallback = (flags & CAMERA_QR_FLAG_ZBAR_FALLBACK) != 0;
-            camera.centerXPermille = centerXPermille;
-            camera.centerYPermille = centerYPermille;
-            camera.sidePermille = sidePermille;
-            camera.areaPermille = areaPermille;
-            camera.rotationCdeg = rotationCdeg;
+            camera.geometryValid = cameraMessage.version == CameraProtocol::VERSION_V2 &&
+              (cameraMessage.flags & CameraProtocol::FLAG_GEOMETRY_VALID) != 0;
+            camera.fullResolution = (cameraMessage.flags & CameraProtocol::FLAG_FULL_RESOLUTION) != 0;
+            camera.mirrored = (cameraMessage.flags & CameraProtocol::FLAG_MIRRORED) != 0;
+            camera.zbarFallback = (cameraMessage.flags & CameraProtocol::FLAG_ZBAR_FALLBACK) != 0;
+            camera.centerXPermille = cameraMessage.centerXPermille;
+            camera.centerYPermille = cameraMessage.centerYPermille;
+            camera.sidePermille = cameraMessage.sidePermille;
+            camera.areaPermille = cameraMessage.areaPermille;
+            camera.rotationCdeg = cameraMessage.rotationCdeg;
             camera.acceptedCount++;
             camera.lastUpdate = now;
             camera.present = true;
 
-            if(version == CAMERA_PROTOCOL_VERSION_V2)
+            if(cameraMessage.version == CameraProtocol::VERSION_V2)
             {
               Control::QrLocalizationInput input;
               input.sequence = sequence;
@@ -401,11 +355,11 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
               input.geometry.valid = camera.geometryValid;
               input.geometry.mirrored = camera.mirrored;
               input.geometry.zbarFallback = camera.zbarFallback;
-              input.geometry.centerX = centerXPermille * 0.001f;
-              input.geometry.centerY = centerYPermille * 0.001f;
-              input.geometry.sideFraction = sidePermille * 0.001f;
-              input.geometry.areaFraction = areaPermille * 0.001f;
-              input.geometry.rotationRad = rotationCdeg * (3.14159265358979323846f / 18000.0f);
+              input.geometry.centerX = cameraMessage.centerXPermille * 0.001f;
+              input.geometry.centerY = cameraMessage.centerYPermille * 0.001f;
+              input.geometry.sideFraction = cameraMessage.sidePermille * 0.001f;
+              input.geometry.areaFraction = cameraMessage.areaPermille * 0.001f;
+              input.geometry.rotationRad = cameraMessage.rotationCdeg * (3.14159265358979323846f / 18000.0f);
               input.localPositionM[0] = _model.state.positionHold.positionEarth[0];
               input.localPositionM[1] = _model.state.positionHold.positionEarth[1];
               input.localPositionM[2] = _model.state.altitude.height;
@@ -420,17 +374,13 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
               input.rangeM = _model.state.aux.range.distanceMm * 0.001f;
               Control::QrLocalization::ingest(
                 _model.state.qrLocalization, _model.state.qrLocalizationConfig,
-                candidate, input);
+                cameraMessage.payload, input);
             }
-            status = CAMERA_ACK_ACCEPTED;
-          }
-          else
-          {
-            status = CAMERA_ACK_MALFORMED;
+            status = CameraProtocol::ACK_ACCEPTED;
           }
         }
       }
-      if(status == CAMERA_ACK_MALFORMED || status == CAMERA_ACK_UNSUPPORTED)
+      if(status == CameraProtocol::ACK_MALFORMED || status == CameraProtocol::ACK_UNSUPPORTED)
       {
         _model.state.cameraUart.rejectedCount++;
       }

@@ -75,58 +75,42 @@ The current default env in `betaflight-fc/platformio.ini` is:
 
 ```ini
 [platformio]
-default_envs = drone_proto_esp32s3_clean_bmi088_gyro
+default_envs = drone_proto_esp32s3_wk2132_experimental
 ```
 
 The main useful environment is:
 
 ```text
-drone_proto_esp32s3_clean_bmi088_gyro
+drone_proto_esp32s3_wk2132_experimental
 ```
 
 Build command:
 
 ```powershell
-C:\Users\keena\.platformio\penv\Scripts\platformio.exe run -e drone_proto_esp32s3_clean_bmi088_gyro
+C:\Users\keena\.platformio\penv\Scripts\platformio.exe run
 ```
 
-Current `platformio.ini` for that env includes:
+The WK2132 environment extends the current MTF02P flight-controller target and
+adds the camera/UWB bridge configuration:
 
 ```ini
-build_src_filter =
-  -<*>
-  +<main_drone_proto_clean.cpp>
-
-lib_deps =
-  ${env.lib_deps}
-  pololu/VL53L1X @ ^1.3.1
-
+[env:drone_proto_esp32s3_wk2132_experimental]
+extends = env:drone_proto_esp32s3_clean_bmi088_gyro_mtf02p
 build_flags =
-  ${env.build_flags}
-  -DESP32S3
-  -DESPFC_TARGET_DRONE_PROTO
-  -DESPFC_COMPAT_API_VERSION_MINOR=48
-  -DESPFC_COMPAT_FC_VERSION_MINOR=5
-  -DESPFC_COMPAT_FC_VERSION_PATCH_LEVEL=5
-  -DESPFC_VERSION=v4_5_5_webcompat
-  -DESPFC_DRONE_PROTO_ENABLE_MOTOR_TEST_DSHOT300
-  -DESPFC_DRONE_PROTO_BMI088_ONLY
-  -DESPFC_DRONE_PROTO_ENABLE_BMM150
-  -DESPFC_DRONE_PROTO_ENABLE_BMP388
-  -DESPFC_DRONE_PROTO_ENABLE_VL53L1X
-  -DESPFC_DRONE_PROTO_ENABLE_PMW3901
-  -DESPFC_DRONE_PROTO_ENABLE_TCS34725
-  -DESPFC_DRONE_PROTO_SERVO_PIN=2
-  -DESPFC_DRONE_PROTO_SERVO_AUTO_STEP
-  -DESPFC_DRONE_PROTO_GYRO_RATE_500
-  -DESPFC_DRONE_PROTO_WATCHDOG_SAFE
-  -DESPFC_DRONE_PROTO_FORCE_BENCH_CONFIG
-  -DCONFIG_FREERTOS_UNICORE
-  -DARDUINO_USB_MODE=1
-  -DARDUINO_USB_CDC_ON_BOOT=1
-
-upload_port = COM5
-monitor_port = COM5
+  ${env:drone_proto_esp32s3_clean_bmi088_gyro_mtf02p.build_flags}
+  -UESPFC_DRONE_PROTO_COLOR_SERIAL_PRINT
+  -DESPFC_DRONE_PROTO_ENABLE_WK2132
+  -DESPFC_DRONE_PROTO_CAMERA_UART
+  -DESPFC_DRONE_PROTO_WK2132_SDA=17
+  -DESPFC_DRONE_PROTO_WK2132_SCL=16
+  -DESPFC_DRONE_PROTO_WK2132_RESET=-1
+  -DESPFC_DRONE_PROTO_WK2132_IRQ=6
+  -DESPFC_DRONE_PROTO_WK2132_IA1=0
+  -DESPFC_DRONE_PROTO_WK2132_IA0=1
+  -DESPFC_DRONE_PROTO_WK2132_I2C_HZ=400000
+  -DESPFC_DRONE_PROTO_WK2132_OSCILLATOR_HZ=14745600
+  -DESPFC_DRONE_PROTO_WK2132_CAMERA_BAUD=115200
+  -DESPFC_DRONE_PROTO_WK2132_UWB_BAUD=115200
 ```
 
 Current known upload/monitor port is COM5. Earlier it was sometimes COM6. This is normal on ESP32-S3/Windows because bootloader and application USB CDC can enumerate as different COM ports.
@@ -1013,4 +997,3 @@ tcsled 0
 ## Short Prompt To Paste With This File
 
 Continue this project from the context in this file. First inspect the current files before editing. Do not delete firmware builds. Preserve the working DSHOT300/BMI088/BMP388/BMM150/VL53/PMW state. The immediate task is whatever I ask next, but use this context as the baseline.
-

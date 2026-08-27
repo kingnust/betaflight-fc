@@ -2087,6 +2087,8 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(Device::DroneProtoDirectRc::badCrcFrames());
     s.print(F(" bad_link="));
     s.print(Device::DroneProtoDirectRc::badLinkFrames());
+    s.print(F(" bad_src="));
+    s.print(Device::DroneProtoDirectRc::badSourceFrames());
     s.print(F(" bad_size="));
     s.print(Device::DroneProtoDirectRc::badSizeFrames());
     s.print(F(" bad_value="));
@@ -2099,6 +2101,17 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(Device::DroneProtoDirectRc::missedFrames());
     s.print(F(" seq="));
     s.print(Device::DroneProtoDirectRc::lastSequence());
+    uint8_t directRcSourceMac[6] = {};
+    if(Device::DroneProtoDirectRc::lastSourceMac(directRcSourceMac, sizeof(directRcSourceMac)))
+    {
+      s.print(F(" source="));
+      for(size_t i = 0; i < sizeof(directRcSourceMac); ++i)
+      {
+        if(i) s.print(':');
+        if(directRcSourceMac[i] < 0x10) s.print('0');
+        s.print(directRcSourceMac[i], HEX);
+      }
+    }
     s.println();
 #endif
 
