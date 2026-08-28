@@ -659,19 +659,6 @@ void test_mixer_output_limit_servo()
   TEST_ASSERT_FLOAT_WITHIN(0.001f,  0.8f, mixer.limitOutput( 1.0f, servo, 80));
 }
 
-void test_mixer_motor_output_scale()
-{
-  Model model;
-  Output::Mixer mixer(model);
-
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, -1.000f, mixer.scaleMotorOutput(-1.0f, 91));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.090f, mixer.scaleMotorOutput( 0.0f, 91));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,  0.365f, mixer.scaleMotorOutput( 0.5f, 91));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,  0.820f, mixer.scaleMotorOutput( 1.0f, 91));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,  0.500f, mixer.scaleMotorOutput( 0.5f, 100));
-  TEST_ASSERT_FLOAT_WITHIN(0.001f,  0.500f, mixer.scaleMotorOutput( 0.5f, 0));
-}
-
 int main(int argc, char **argv)
 {
   UNITY_BEGIN();
@@ -701,7 +688,6 @@ int main(int argc, char **argv)
   RUN_TEST(test_mixer_throttle_limit_clip);
   RUN_TEST(test_mixer_output_limit_motor);
   RUN_TEST(test_mixer_output_limit_servo);
-  RUN_TEST(test_mixer_motor_output_scale);
 
   return UNITY_END();
 }

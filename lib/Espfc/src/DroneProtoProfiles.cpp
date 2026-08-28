@@ -144,9 +144,9 @@ void setHoverSafe(ModelConfig& config)
   setHoverTune(config);
   setCommonDshot300(config);
 
-  config.output.throttleLimitType = THROTTLE_LIMIT_TYPE_SCALE;
-  config.output.throttleLimitPercent = 80;
-  config.output.motorLimit = 90;
+  config.output.throttleLimitType = THROTTLE_LIMIT_TYPE_NONE;
+  config.output.throttleLimitPercent = 100;
+  config.output.motorLimit = 100;
 }
 
 void setAcroTest(ModelConfig& config)

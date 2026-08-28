@@ -7,11 +7,6 @@ namespace Espfc {
 
 namespace Output {
 
-#if defined(ESPFC_TARGET_DRONE_PROTO) && defined(ESPFC_DRONE_PROTO_MOTOR3_OUTPUT_PERCENT)
-static_assert(ESPFC_DRONE_PROTO_MOTOR3_OUTPUT_PERCENT >= 1 && ESPFC_DRONE_PROTO_MOTOR3_OUTPUT_PERCENT <= 100,
-  "Motor 3 output percent must be between 1 and 100");
-#endif
-
 Mixer::Mixer(Model& model): _model(model), _motor(NULL), _servo(NULL) {}
 
 int Mixer::begin()
@@ -249,25 +244,6 @@ float FAST_CODE_ATTR Mixer::limitOutput(float output, const OutputChannelConfig&
   }
 }
 
-float FAST_CODE_ATTR Mixer::scaleMotorOutput(float output, int percent)
-{
-  if(percent >= 100 || percent < 1) return output;
-
-  const float factor = percent * 0.01f;
-  const float normalized = Utils::clamp(output, -1.f, 1.f);
-  return ((normalized + 1.f) * factor) - 1.f;
-}
-
-int Mixer::motorOutputPercent(size_t index) const
-{
-#if defined(ESPFC_TARGET_DRONE_PROTO) && defined(ESPFC_DRONE_PROTO_MOTOR3_OUTPUT_PERCENT)
-  if(index == 2) return ESPFC_DRONE_PROTO_MOTOR3_OUTPUT_PERCENT;
-#else
-  (void)index;
-#endif
-  return 100;
-}
-
 void FAST_CODE_ATTR Mixer::writeOutput(const MixerConfig& mixer, float * out)
 {
   Utils::Stats::Measure mixerMeasure(_model.state.stats, COUNTER_MIXER_WRITE);
@@ -282,7 +258,7 @@ void FAST_CODE_ATTR Mixer::writeOutput(const MixerConfig& mixer, float * out)
       if(!och.servo && _model.state.mixer.maxThrottle > _model.config.output.minCommand)
       {
         const float normalized = Utils::map(command, _model.config.output.minCommand, _model.state.mixer.maxThrottle, -1.f, 1.f);
-        command = lrintf(Utils::map(scaleMotorOutput(normalized, motorOutputPercent(i)), -1.f, 1.f,
+        command = lrintf(Utils::map(normalized, -1.f, 1.f,
           _model.config.output.minCommand, _model.state.mixer.maxThrottle));
       }
       _model.state.output.us[i] = command;
@@ -297,7 +273,6 @@ void FAST_CODE_ATTR Mixer::writeOutput(const MixerConfig& mixer, float * out)
       else
       {
         float v = Utils::clamp(out[i], -1.f, 1.f);
-        v = scaleMotorOutput(v, motorOutputPercent(i));
         _model.state.output.us[i] = lrintf(Utils::map(v, -1.f, 1.f, _model.state.mixer.minThrottle, _model.state.mixer.maxThrottle));
       }
     }
