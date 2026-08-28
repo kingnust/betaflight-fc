@@ -1953,7 +1953,9 @@ void MspProcessor::processEsc4way()
 #if defined(ESPFC_MULTI_CORE) && defined(ESPFC_FREE_RTOS)
   timer_pause(TIMER_GROUP_0, TIMER_0);
 #endif
-  esc4wayProcess(getSerialPort());
+  serialPort_t *port = getSerialPort();
+  serialEndWrite(port);
+  esc4wayProcess(port);
   processRestart();
 }
 

@@ -137,6 +137,9 @@ uint32_t zigzagEncode(int32_t value);
 unsigned long millis(void);
 unsigned long micros(void);
 
+void esc4wayLock(void);
+void esc4wayUnlock(void);
+
 #if __GNUC__ > 6
 #define FALLTHROUGH __attribute__ ((fallthrough))
 #else

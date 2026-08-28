@@ -4,6 +4,31 @@
 #include "Hal/Gpio.h"
 #include "Utils/MemoryHelper.h"
 
+#if defined(ESP32)
+#include "esp_rom_gpio.h"
+#include "soc/gpio_sig_map.h"
+
+static portMUX_TYPE esc4wayMux = portMUX_INITIALIZER_UNLOCKED;
+#endif
+
+void esc4wayLock(void)
+{
+#if defined(ESP32)
+    portENTER_CRITICAL(&esc4wayMux);
+#else
+    noInterrupts();
+#endif
+}
+
+void esc4wayUnlock(void)
+{
+#if defined(ESP32)
+    portEXIT_CRITICAL(&esc4wayMux);
+#else
+    interrupts();
+#endif
+}
+
 int IORead(IO_t pin)
 {
     return Espfc::Hal::Gpio::digitalRead(pin);
@@ -17,6 +42,11 @@ void IOConfigGPIO(IO_t pin, uint8_t mode)
             break;
         case IOCFG_OUT_PP:
         case IOCFG_AF_PP:
+#if defined(ESP32)
+            // RMT remains selected in the GPIO matrix after its driver stops.
+            // Four-way passthrough needs direct GPIO control for bit-banging.
+            esp_rom_gpio_connect_out_signal(pin, SIG_GPIO_OUT_IDX, false, false);
+#endif
             Espfc::Hal::Gpio::pinMode(pin, OUTPUT);
             break;
     }
@@ -90,10 +120,14 @@ portSharing_e determinePortSharing(const serialPortConfig_t *portConfig, serialP
 
 void serialBeginWrite(serialPort_t * instance)
 {
+    UNUSED(instance);
 }
 
 void serialEndWrite(serialPort_t * instance)
 {
+    if(!instance) return;
+    Espfc::Device::SerialDevice * dev = (Espfc::Device::SerialDevice *)instance->espfcDevice;
+    if(dev) dev->flush();
 }
 
 void FAST_CODE_ATTR serialWrite(serialPort_t * instance, uint8_t ch)
@@ -144,7 +178,7 @@ void motorInitEscDevice(void * driver)
 {
     escDriver = static_cast<EscDriver *>(driver);
     _motorCount = 0;
-    memset(&motors, 0, sizeof(pwmOutputPort_t));
+    memset(motors, 0, sizeof(motors));
     if(!driver) return;
 
     for(size_t i = 0; i < MAX_SUPPORTED_MOTORS; i++)

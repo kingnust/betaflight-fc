@@ -82,8 +82,22 @@ void EscDriverEsp32::end()
   {
     if (!_channel[i].attached()) continue;
     if (_protocol == ESC_PROTOCOL_DISABLED) continue;
-    // TODO: handle splitted case
+
+    rmt_ll_enable_tx_end_interrupt(&RMT, (rmt_channel_t)i, false);
+    rmt_ll_tx_stop(&RMT, (rmt_channel_t)i);
     rmt_driver_uninstall((rmt_channel_t)i);
+
+    if (_digital && _dshot_tlm)
+    {
+      const rmt_channel_t rx_ch = (rmt_channel_t)RMT_ENCODE_RX_CHANNEL(i);
+      if (rx_ch != (rmt_channel_t)i)
+      {
+        rmt_ll_rx_enable(&RMT, (rmt_channel_t)i, false);
+        rmt_driver_uninstall(rx_ch);
+      }
+    }
+
+    esp_rom_gpio_connect_out_signal(_channel[i].pin, SIG_GPIO_OUT_IDX, false, false);
   }
   _protocol = ESC_PROTOCOL_DISABLED;
 }

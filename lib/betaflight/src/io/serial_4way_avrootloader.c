@@ -150,6 +150,7 @@ static void ByteCrc(uint8_t *bt)
 static uint8_t BL_ReadBuf(uint8_t *pstring, uint8_t len)
 {
     // len 0 means 256
+    esc4wayLock();
     CRC_16.word = 0;
     LastCRC_16.word = 0;
     uint8_t  LastACK = brNONE;
@@ -172,11 +173,13 @@ static uint8_t BL_ReadBuf(uint8_t *pstring, uint8_t len)
         if (!suart_getc_(&LastACK)) goto timeout;
     }
 timeout:
+    esc4wayUnlock();
     return (LastACK == brSUCCESS);
 }
 
 static void BL_SendBuf(uint8_t *pstring, uint8_t len)
 {
+    esc4wayLock();
     ESC_OUTPUT;
     CRC_16.word=0;
     do {
@@ -191,6 +194,7 @@ static void BL_SendBuf(uint8_t *pstring, uint8_t len)
         suart_putc_(&CRC_16.bytes[1]);
     }
     ESC_INPUT;
+    esc4wayUnlock();
 }
 
 uint8_t BL_ConnectEx(uint8_32_u *pDeviceInfo)
@@ -231,9 +235,15 @@ uint8_t BL_ConnectEx(uint8_32_u *pDeviceInfo)
 static uint8_t BL_GetACK(uint32_t Timeout)
 {
     uint8_t LastACK = brNONE;
-    while (!(suart_getc_(&LastACK)) && (Timeout)) {
+    while (true) {
+        esc4wayLock();
+        const uint8_t received = suart_getc_(&LastACK);
+        esc4wayUnlock();
+        if (received || !Timeout) {
+            break;
+        }
         Timeout--;
-    } ;
+    }
     return (LastACK);
 }
 
