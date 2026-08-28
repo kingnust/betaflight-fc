@@ -207,7 +207,7 @@ void SerialManager::processMsp(SerialPortState& ss,
 
   uint8_t buff[64] = {0};
   len = std::min(len, (size_t)sizeof(buff));
-  ss.stream->readMany(buff, len);
+  len = ss.stream->readMany(buff, len);
   char * c = (char*)&buff[0];
   while(len--)
   {

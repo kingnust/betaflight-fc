@@ -113,6 +113,7 @@ private:
   friend class Wk2132SerialPort;
 
   bool lock(uint32_t timeoutMs = 25);
+  bool tryLock();
   void unlock();
   bool configurePort(Wk2132SerialPort& port, const SerialDeviceConfig& config);
   bool clearFifosUnlocked(Wk2132SerialPort& port);

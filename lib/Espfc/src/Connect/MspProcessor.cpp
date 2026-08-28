@@ -29,7 +29,18 @@ namespace {
 // Drone Prototype retains 32 inputs internally for CRSF subset compatibility.
 constexpr size_t MSP_RX_MAP_CHANNELS = 8;
 constexpr size_t MSP_RC_CHANNELS = 16;
+constexpr uint8_t MSP_BOX_ID_CHIRP = 55;
 namespace CameraProtocol = Espfc::Connect::DroneProtoCameraProtocol;
+
+static uint8_t toMspModeId(uint8_t internalId)
+{
+  return internalId == Espfc::MODE_CHIRP ? MSP_BOX_ID_CHIRP : internalId;
+}
+
+static uint8_t fromMspModeId(uint8_t permanentId)
+{
+  return permanentId == MSP_BOX_ID_CHIRP ? Espfc::MODE_CHIRP : permanentId;
+}
 
 enum SerialSpeedIndex {
   SERIAL_SPEED_INDEX_AUTO = 0,
@@ -488,9 +499,9 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
 
     case MSP_BOXNAMES:
 #if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
-      r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;POSHOLD;"));
+      r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;POSHOLD;CHIRP;"));
 #else
-      r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;"));
+      r.writeString(F("ARM;AIRMODE;ANGLE;ALTHOLD;BEEPER;FAILSAFE;BLACKBOX;BLACKBOXERASE;CHIRP;"));
 #endif
       break;
 
@@ -506,12 +517,13 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
 #if defined(ESPFC_DRONE_PROTO_ENABLE_MTF02P)
       r.writeU8(MODE_POSHOLD);
 #endif
+      r.writeU8(MSP_BOX_ID_CHIRP);
       break;
 
     case MSP_MODE_RANGES:
       for(size_t i = 0; i < ACTUATOR_CONDITIONS; i++)
       {
-        r.writeU8(_model.config.conditions[i].id);
+        r.writeU8(toMspModeId(_model.config.conditions[i].id));
         r.writeU8(_model.config.conditions[i].ch - AXIS_AUX_1);
         r.writeU8((_model.config.conditions[i].min - 900) / 25);
         r.writeU8((_model.config.conditions[i].max - 900) / 25);
@@ -522,7 +534,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU8(ACTUATOR_CONDITIONS);
       for(size_t i = 0; i < ACTUATOR_CONDITIONS; i++)
       {
-        r.writeU8(_model.config.conditions[i].id);
+        r.writeU8(toMspModeId(_model.config.conditions[i].id));
         r.writeU8(_model.config.conditions[i].logicMode);
         r.writeU8(_model.config.conditions[i].linkId);
       }
@@ -534,7 +546,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         size_t i = m.readU8();
         if(i < ACTUATOR_CONDITIONS)
         {
-          _model.config.conditions[i].id = m.readU8();
+          _model.config.conditions[i].id = fromMspModeId(m.readU8());
           _model.config.conditions[i].ch = m.readU8() + AXIS_AUX_1;
           _model.config.conditions[i].min = m.readU8() * 25 + 900;
           _model.config.conditions[i].max = m.readU8() * 25 + 900;
@@ -787,9 +799,11 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU8(_model.config.mag.align);  // mag align
       //1.41+
       r.writeU8(_model.state.gyro.present ? 1 : 0); // gyro detection mask GYRO_1_MASK
-      r.writeU8(0); // gyro_to_use
-      r.writeU8(_model.config.gyro.align); // gyro 1
-      r.writeU8(0); // gyro 2
+      // API 1.47+: enabled gyro mask followed by custom mag alignment angles.
+      r.writeU8(_model.state.gyro.present ? 1 : 0);
+      r.writeU16(0); // custom mag roll, decidegrees
+      r.writeU16(0); // custom mag pitch, decidegrees
+      r.writeU16(0); // custom mag yaw, decidegrees
       break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -797,12 +811,14 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
         uint8_t gyroAlign = m.readU8(); // gyro align
         m.readU8(); // discard deprecated acc align
         _model.config.mag.align = m.readU8(); // mag align
-        // API >= 1.41 - support the gyro_to_use and alignment for gyros 1 & 2
-        if(m.remain() >= 3)
+        // API 1.47+: enabled gyro mask and custom mag alignment angles.
+        // This target currently uses the discrete mag alignment above.
+        if(m.remain() >= 7)
         {
-          m.readU8(); // gyro_to_use
-          gyroAlign = m.readU8(); // gyro 1 align
-          m.readU8(); // gyro 2 align
+          m.readU8();  // gyro enable mask
+          m.readU16(); // custom mag roll
+          m.readU16(); // custom mag pitch
+          m.readU16(); // custom mag yaw
         }
         _model.config.gyro.align = gyroAlign;
       }
@@ -934,6 +950,16 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU16(lrintf(Utils::toDeg(_model.state.attitude.euler.y) * 10.f)); // pitch [decidegrees]
       r.writeU16(lrintf(Utils::toDeg(-_model.state.attitude.euler.z)));       // yaw   [degrees]
       break;
+
+    case MSP_ATTITUDE_QUATERNION:
+    {
+      const Quaternion& q = _model.state.attitude.quaternion;
+      r.writeU16((uint16_t)std::clamp<int32_t>(lrintf(q.w * 32767.f), -32767, 32767));
+      r.writeU16((uint16_t)std::clamp<int32_t>(lrintf(q.x * 32767.f), -32767, 32767));
+      r.writeU16((uint16_t)std::clamp<int32_t>(lrintf(q.y * 32767.f), -32767, 32767));
+      r.writeU16((uint16_t)std::clamp<int32_t>(lrintf(q.z * 32767.f), -32767, 32767));
+      break;
+    }
 
     case MSP_ALTITUDE:
     {
@@ -1320,9 +1346,13 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       _model.reload();
       break;
 
-    //case MSP_COMPASS_CONFIG:
-    //  r.writeU16(0); // mag_declination * 10
-    //  break;
+    case MSP_COMPASS_CONFIG:
+      r.writeU16(0); // magnetic declination in decidegrees
+      break;
+
+    case MSP_SET_COMPASS_CONFIG:
+      if(m.remain() >= 2) m.readU16(); // declination is not applied by this target
+      break;
 
     case MSP_FILTER_CONFIG:
       r.writeU8(_model.config.gyro.filter.freq);           // gyro lpf

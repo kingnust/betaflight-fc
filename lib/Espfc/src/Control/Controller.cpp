@@ -1,6 +1,7 @@
 #include "Control/Controller.h"
 #include "Utils/Math.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace Espfc::Control {
 
@@ -18,6 +19,8 @@ int Controller::begin()
   beginOuterLoop(AXIS_PITCH);
   beginAltHold();
   _positionHold.begin();
+  _chirp.begin(0.5f, 100.f, 20.f, _model.state.loopTimer.rate);
+  clearChirpDebug();
 
   return 1;
 }
@@ -40,6 +43,7 @@ int FAST_CODE_ATTR Controller::update()
 
       default: outerLoop(); break;
     }
+    updateChirp();
   }
 
   {
@@ -58,6 +62,94 @@ int FAST_CODE_ATTR Controller::update()
   }
 
   return 1;
+}
+
+void FAST_CODE_ATTR Controller::updateChirp()
+{
+  const bool switchActive = _model.isModeActive(MODE_CHIRP);
+  const bool risingEdge = switchActive && !_chirpSwitchWasActive;
+  _chirpSwitchWasActive = switchActive;
+
+  if(!switchActive)
+  {
+    if(_chirpAdvanceOnRelease)
+    {
+      _chirpAxis = (_chirpAxis + 1u) % AXIS_COUNT_RPY;
+    }
+    _chirp.reset();
+    _chirpRunning = false;
+    _chirpAdvanceOnRelease = false;
+    clearChirpDebug();
+    return;
+  }
+
+  if(risingEdge && _model.config.debug.mode == DEBUG_CHIRP && chirpSafetyReady())
+  {
+    _chirp.reset();
+    _chirpRunning = true;
+    _chirpAdvanceOnRelease = true;
+  }
+
+  if(!_chirpRunning)
+  {
+    clearChirpDebug();
+    return;
+  }
+
+  if(!chirpSafetyReady())
+  {
+    _chirp.reset();
+    _chirpRunning = false;
+    _chirpAdvanceOnRelease = false;
+    clearChirpDebug();
+    return;
+  }
+
+  if(!_chirp.update())
+  {
+    _chirpRunning = false;
+    clearChirpDebug();
+    return;
+  }
+
+  static constexpr float amplitudeDegPerSecond[AXIS_COUNT_RPY] = { 40.f, 40.f, 25.f };
+  _model.state.setpoint.rate[_chirpAxis] += Utils::toRad(amplitudeDegPerSecond[_chirpAxis] * _chirp.excitation());
+
+  if(_model.config.debug.mode == DEBUG_CHIRP)
+  {
+    _model.state.debug[0] = static_cast<int16_t>(lrintf(5000.f * _chirp.phase()));
+    _model.state.debug[1] = _chirpAxis;
+    _model.state.debug[2] = static_cast<int16_t>(lrintf(10.f * _chirp.frequencyHz()));
+    _model.state.debug[3] = static_cast<int16_t>(lrintf(1000.f * _chirp.excitation()));
+  }
+}
+
+bool Controller::chirpSafetyReady() const
+{
+  if(!_model.blackboxEnabled()) return false;
+  if(!_model.isModeActive(MODE_ARMED) || _model.isThrottleLow()) return false;
+  if(_model.state.failsafe.phase != FC_FAILSAFE_IDLE) return false;
+  if(!_model.state.input.channelsValid || _model.state.input.rxLoss) return false;
+  if(_model.config.mixer.type == FC_MIXER_GIMBAL) return false;
+
+  static constexpr float MAX_TILT_RAD = 1.0471975512f; // 60 degrees
+  static constexpr float MAX_RATE_RAD_PER_SECOND = 12.5663706144f; // 720 deg/s
+  if(fabsf(_model.state.attitude.euler[AXIS_ROLL]) > MAX_TILT_RAD) return false;
+  if(fabsf(_model.state.attitude.euler[AXIS_PITCH]) > MAX_TILT_RAD) return false;
+  for(size_t axis = 0; axis < AXIS_COUNT_RPY; axis++)
+  {
+    if(fabsf(_model.state.gyro.adc[axis]) > MAX_RATE_RAD_PER_SECOND) return false;
+  }
+  return true;
+}
+
+void Controller::clearChirpDebug()
+{
+  if(_model.config.debug.mode != DEBUG_CHIRP) return;
+  _model.state.debug[0] = 0;
+  _model.state.debug[1] = -1;
+  _model.state.debug[2] = 0;
+  _model.state.debug[3] = 0;
 }
 
 void Controller::outerLoopRobot()

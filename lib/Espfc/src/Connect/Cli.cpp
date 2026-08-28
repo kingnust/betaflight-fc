@@ -1307,7 +1307,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     static const char * const helps[] = {
       PSTR("available commands:"),
       PSTR(" help"), PSTR(" dump"), PSTR(" get param"), PSTR(" set param value ..."), PSTR(" cal [gyro]"),
-      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [tune|sensors|rx|off] [flash|serial]"),
+      PSTR(" defaults"), PSTR(" save"), PSTR(" reboot"), PSTR(" profile [bench_safe|hover_safe|acro_test]"), PSTR(" logpreset [chirp|tune|sensors|rx|off] [flash|serial]"),
       PSTR(" rpm [telemetry 0|1|filter 0-3]"),
       PSTR(" graph aux"), PSTR(" flow [debug]"), PSTR(" color [debug|led 0|1]"), PSTR(" rxstatus"),
 #if defined(ESPFC_DRONE_PROTO_CAMERA_UART)
@@ -1573,7 +1573,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     if(!cmd.args[1] || strcmp_P(cmd.args[1], PSTR("status")) == 0)
     {
       printLogPresetStatus(_model, s);
-      s.println(F("available: tune, sensors, rx, off"));
+      s.println(F("available: chirp, tune, sensors, rx, off"));
       s.println(F("usage: logpreset <preset> [flash|serial]"));
       s.println(F("then: save and reboot"));
       return;
@@ -1609,7 +1609,12 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     _model.config.blackbox.pDenom = 16;
     _model.config.blackbox.mode = 0;
 
-    if(strcmp_P(cmd.args[1], PSTR("tune")) == 0)
+    if(strcmp_P(cmd.args[1], PSTR("chirp")) == 0)
+    {
+      _model.config.blackbox.fieldsMask = blackboxMaskTune();
+      _model.config.debug.mode = DEBUG_CHIRP;
+    }
+    else if(strcmp_P(cmd.args[1], PSTR("tune")) == 0)
     {
       _model.config.blackbox.fieldsMask = blackboxMaskTune();
       _model.config.debug.mode = DEBUG_PIDLOOP;
@@ -1627,7 +1632,7 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     else
     {
       s.println(F("unknown logpreset"));
-      s.println(F("available: tune, sensors, rx, off"));
+      s.println(F("available: chirp, tune, sensors, rx, off"));
       return;
     }
 
@@ -1636,6 +1641,10 @@ void Cli::execute(CliCmd& cmd, Stream& s)
     s.print(F(" dev="));
     s.println(blackboxDeviceName(_model.config.blackbox.dev));
     s.println(F("type save and reboot to start logging"));
+    if(strcmp_P(cmd.args[1], PSTR("chirp")) == 0)
+    {
+      s.println(F("assign CHIRP to an AUX range; each switch cycle advances roll, pitch, yaw"));
+    }
     if(_model.config.blackbox.dev == BLACKBOX_DEV_SERIAL)
     {
       s.println(F("serial blackbox also needs a SERIAL_FUNCTION_BLACKBOX port"));

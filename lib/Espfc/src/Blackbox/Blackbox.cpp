@@ -198,7 +198,10 @@ int Blackbox::begin()
   updateModeFlag(&rcModeActivationPresent, BOXARM, _model.state.mode.maskPresent & 1 << MODE_ARMED);
   updateModeFlag(&rcModeActivationPresent, BOXANGLE, _model.state.mode.maskPresent & 1 << MODE_ANGLE);
   updateModeFlag(&rcModeActivationPresent, BOXAIRMODE, _model.state.mode.maskPresent & 1 << MODE_AIRMODE);
-  updateModeFlag(&rcModeActivationPresent, BOXFAILSAFE, _model.state.mode.maskPresent & 1 << MODE_FAILSAFE);
+  const bool chirpModePresent = _model.config.debug.mode == DEBUG_CHIRP
+    && (_model.state.mode.maskPresent & 1 << MODE_CHIRP);
+  updateModeFlag(&rcModeActivationPresent, BOXFAILSAFE,
+    (_model.state.mode.maskPresent & 1 << MODE_FAILSAFE) || chirpModePresent);
   updateModeFlag(&rcModeActivationPresent, BOXBLACKBOX, _model.state.mode.maskPresent & 1 << MODE_BLACKBOX);
   updateModeFlag(&rcModeActivationPresent, BOXBLACKBOXERASE, _model.state.mode.maskPresent & 1 << MODE_BLACKBOX_ERASE);
 
@@ -325,7 +328,11 @@ void FAST_CODE_ATTR Blackbox::updateMode()
   updateModeFlag(&rcModeActivationMask, BOXANGLE, _model.isSwitchActive(MODE_ANGLE));
   updateModeFlag(&rcModeActivationMask, BOXAIRMODE, _model.isSwitchActive(MODE_AIRMODE));
   updateModeFlag(&rcModeActivationMask, BOXANTIGRAVITY, _model.isSwitchActive(MODE_ALTHOLD));
-  updateModeFlag(&rcModeActivationMask, BOXFAILSAFE, _model.isSwitchActive(MODE_FAILSAFE));
+  const bool chirpModeActive = _model.config.debug.mode == DEBUG_CHIRP
+    && _model.isModeActive(MODE_CHIRP);
+  // The Configurator chirp parser reserves slow-frame bit 6 for BOXCHIRP.
+  updateModeFlag(&rcModeActivationMask, BOXFAILSAFE,
+    _model.isSwitchActive(MODE_FAILSAFE) || chirpModeActive);
   updateModeFlag(&rcModeActivationMask, BOXBLACKBOX, _model.isSwitchActive(MODE_BLACKBOX));
   updateModeFlag(&rcModeActivationMask, BOXBLACKBOXERASE, _model.isSwitchActive(MODE_BLACKBOX_ERASE));
 }

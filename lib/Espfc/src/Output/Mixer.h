@@ -17,6 +17,7 @@ class Mixer
     void updateMixer(const MixerConfig& mixer, float * outputs);
     float limitThrust(float thrust, ThrottleLimitType type, int8_t limit);
     float limitOutput(float output, const OutputChannelConfig& occ, int limit);
+    float scaleMotorOutput(float output, int percent);
     void writeOutput(const MixerConfig& mixer, float * out);
     void readTelemetry();
     float inline erpmToHz(float erpm);
@@ -33,6 +34,8 @@ class Mixer
     uint32_t _statsCounter;
     uint32_t _statsCounterMax;
     float _erpmToHz;
+
+    int motorOutputPercent(size_t index) const;
 };
 
 }

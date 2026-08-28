@@ -90,6 +90,10 @@ int BaroBMP388::begin(BusDevice* bus, uint8_t addr)
     DRONE_PROTO_DEBUG_LINE("bmp388 config failed");
     return 0;
   }
+  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_FORCED | BMP388_TEMP_EN | BMP388_PRESS_EN)) return 0;
+  // Startup may block before the flight loop begins. Runtime conversions are
+  // started by setMode() and collected later by the barometer scheduler.
+  delay(30);
   if (!readMeasurement()) return 0;
 
   return 1;
@@ -113,7 +117,10 @@ float BaroBMP388::readPressure()
 
 void BaroBMP388::setMode(BaroDeviceMode mode)
 {
-  (void)mode;
+  if (mode == BARO_MODE_PRESS)
+  {
+    writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_FORCED | BMP388_TEMP_EN | BMP388_PRESS_EN);
+  }
 }
 
 int BaroBMP388::getDelay(BaroDeviceMode mode) const
@@ -121,7 +128,7 @@ int BaroBMP388::getDelay(BaroDeviceMode mode) const
   switch (mode)
   {
     case BARO_MODE_TEMP: return 0;
-    default: return 25000;
+    default: return 30000;
   }
 }
 
@@ -142,9 +149,6 @@ bool BaroBMP388::writeReg(uint8_t reg, uint8_t value)
 bool BaroBMP388::readMeasurement()
 {
   uint8_t data[6] = {0};
-  if (!writeReg(BMP388_PWR_CTRL_REG, BMP388_MODE_FORCED | BMP388_TEMP_EN | BMP388_PRESS_EN)) return false;
-  delay(30);
-
   uint8_t status = 0;
   if (_bus->read(_addr, BMP388_STATUS_REG, 1, &status) != 1) return false;
   if ((status & (BMP388_DRDY_PRESS | BMP388_DRDY_TEMP)) != (BMP388_DRDY_PRESS | BMP388_DRDY_TEMP))

@@ -89,6 +89,7 @@ enum FlightMode {
   MODE_BLACKBOX,
   MODE_BLACKBOX_ERASE,
   MODE_POSHOLD,
+  MODE_CHIRP,
   MODE_COUNT,
 };
 
@@ -181,7 +182,9 @@ enum DebugMode {
   DEBUG_BLACKBOX_OUTPUT,
   DEBUG_GYRO_SAMPLE,
   DEBUG_RX_TIMING,
-  DEBUG_COUNT,
+  // API 1.47+ Configurator assigns CHIRP numeric debug mode 96.
+  DEBUG_CHIRP = 96,
+  DEBUG_COUNT = 97,
 };
 
 enum Axis {

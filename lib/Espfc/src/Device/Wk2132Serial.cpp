@@ -82,7 +82,7 @@ void Wk2132SerialPort::updateBaudRate(int baud)
 
 int Wk2132SerialPort::available()
 {
-  if(!_bridge.present() || !_stats.configured || !_bridge.lock())
+  if(!_bridge.present() || !_stats.configured || !_bridge.tryLock())
   {
     return _peeked >= 0 ? 1 : 0;
   }
@@ -117,7 +117,7 @@ size_t Wk2132SerialPort::readMany(uint8_t* data, size_t length)
     }
   }
 
-  if(!_bridge.present() || !_bridge.lock())
+  if(!_bridge.present() || !_bridge.tryLock())
   {
     return copied;
   }
@@ -140,7 +140,7 @@ int Wk2132SerialPort::peek()
   {
     return _peeked;
   }
-  if(!_bridge.present() || !_stats.configured || !_bridge.lock())
+  if(!_bridge.present() || !_stats.configured || !_bridge.tryLock())
   {
     return -1;
   }
@@ -183,7 +183,7 @@ size_t Wk2132SerialPort::write(uint8_t value)
 
 size_t Wk2132SerialPort::write(const uint8_t* data, size_t length)
 {
-  if(data == nullptr || length == 0 || !_bridge.present() || !_stats.configured || !_bridge.lock())
+  if(data == nullptr || length == 0 || !_bridge.present() || !_stats.configured || !_bridge.tryLock())
   {
     return 0;
   }
@@ -202,7 +202,7 @@ size_t Wk2132SerialPort::write(const uint8_t* data, size_t length)
 
 int Wk2132SerialPort::availableForWrite()
 {
-  if(!_bridge.present() || !_stats.configured || !_bridge.lock())
+  if(!_bridge.present() || !_stats.configured || !_bridge.tryLock())
   {
     return 0;
   }
@@ -215,7 +215,7 @@ int Wk2132SerialPort::availableForWrite()
 
 bool Wk2132SerialPort::isTxFifoEmpty()
 {
-  if(!_bridge.present() || !_stats.configured || !_bridge.lock())
+  if(!_bridge.present() || !_stats.configured || !_bridge.tryLock())
   {
     return true;
   }
@@ -461,6 +461,11 @@ Wk2132SerialPort& Wk2132Bridge::uwbPort()
 bool Wk2132Bridge::lock(uint32_t timeoutMs)
 {
   return _mutex != nullptr && xSemaphoreTake(_mutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
+}
+
+bool Wk2132Bridge::tryLock()
+{
+  return _mutex != nullptr && xSemaphoreTake(_mutex, 0) == pdTRUE;
 }
 
 void Wk2132Bridge::unlock()
